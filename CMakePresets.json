@@ -1,0 +1,14 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-debug",
+      "displayName": "BIC Windows Debug",
+      "generator": "Ninja",
+      "binaryDir": "$env{BIC_BUILD_ROOT}/debug",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    }
+  ],
+  "buildPresets": [{ "name": "windows-debug", "configurePreset": "windows-debug" }]
+}
