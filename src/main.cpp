@@ -3,7 +3,7 @@
 namespace
 {
 constexpr wchar_t kWindowClassName[] = L"BIC.MainWindow";
-constexpr wchar_t kWindowTitle[] = L"BIC";
+constexpr wchar_t kWindowTitle[] = L"BIC!!!";
 
 LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM w_param, LPARAM l_param)
 {

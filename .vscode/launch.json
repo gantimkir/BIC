@@ -1,0 +1,21 @@
+{
+    "version":  "0.2.0",
+    "configurations":  [
+                           {
+                               "name":  "BIC: Debug (MSVC x64)",
+                               "type":  "cppvsdbg",
+                               "request":  "launch",
+                               "program":  "${config:bic.buildRoot}/debug/BIC.exe",
+                               "args":  [
+
+                                        ],
+                               "stopAtEntry":  false,
+                               "cwd":  "${workspaceFolder}",
+                               "environment":  [
+
+                                               ],
+                               "console":  "internalConsole",
+                               "preLaunchTask":  "BIC: build and check"
+                           }
+                       ]
+}
