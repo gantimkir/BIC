@@ -7,5 +7,8 @@
                                   "UNICODE",
                                   "_UNICODE"
                               ],
-    "C_Cpp.default.windowsSdkVersion":  "10.0.26100.0"
+    "C_Cpp.default.windowsSdkVersion":  "10.0.26100.0",
+    "git.enabled":  true,
+    "git.autofetch":  true,
+    "git.confirmSync":  true
 }
