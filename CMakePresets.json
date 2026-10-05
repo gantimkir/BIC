@@ -7,7 +7,10 @@
       "displayName": "BIC Windows Debug",
       "generator": "Ninja",
       "binaryDir": "$env{BIC_BUILD_ROOT}/debug",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     }
   ],
   "buildPresets": [{ "name": "windows-debug", "configurePreset": "windows-debug" }]

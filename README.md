@@ -43,7 +43,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 
 Исполняемый файл: `<BuildRoot>\debug\BIC.exe`.
 
+## Работа в VS Code
+
+Откройте папку проекта целиком. Расширение **C/C++** (`ms-vscode.cpptools`)
+рекомендуется в `.vscode/extensions.json`.
+
+- **Ctrl+Shift+B** запускает `build.ps1` и собирает Debug-версию через MSVC.
+- **F5** сначала собирает проект, затем запускает `BIC.exe` в отладчике.
+- Путь сборки для VS Code задаётся в `.vscode/settings.json` параметром
+  `bic.buildRoot`. По умолчанию это `C:\Dev\Build\BIC-Z7`. При смене пути
+  обновите там же `C_Cpp.default.compileCommands`.
+
+Конфигурация CMake создаёт `compile_commands.json` в папке Debug-сборки;
+расширение C/C++ использует его для подсказок и навигации по коду.
+
 Исходники храните в `C:\YD\Projects\BIC`. Дождитесь синхронизации перед переходом на другой компьютер.
 Gitignore относится только к Git и не управляет облачной синхронизацией.
 Для воспроизводимой сборки на компьютерах согласуйте точные версии MSVC, SDK и CMake.
-Git-репозиторий пока не инициализирован.
