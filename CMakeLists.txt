@@ -10,6 +10,8 @@ add_executable(BIC WIN32
     src/main.cpp
     src/main_window.cpp
     src/main_window.h
+    src/contract_registry.cpp
+    src/contract_registry.h
     src/window_hotkeys.cpp
     src/window_hotkeys.h
     src/single_instance.cpp

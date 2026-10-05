@@ -41,15 +41,25 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show_command)
         return 1;
     }
 
+    // Занимаем правую нижнюю четверть рабочей области основного монитора.
+    RECT work_area{};
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0))
+    {
+        work_area.right = GetSystemMetrics(SM_CXSCREEN);
+        work_area.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+    const int window_width = (work_area.right - work_area.left) / 2;
+    const int window_height = (work_area.bottom - work_area.top) / 2;
+
     HWND window = CreateWindowExW(
         0,
         MainWindow::kClassName,
         MainWindow::kTitle,
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        900,
-        600,
+        work_area.right - window_width,
+        work_area.bottom - window_height,
+        window_width,
+        window_height,
         nullptr,
         nullptr,
         instance,
