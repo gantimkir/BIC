@@ -9,14 +9,75 @@
 
 Подготовка новой Windows-машины описана в [INSTALL.md](INSTALL.md).
 
+## Продолжение работы на другом компьютере
+
+Контекст разработки хранится вместе с исходниками:
+
+- [AGENTS.md](AGENTS.md) - обязательные правила для Codex на всех машинах проекта.
+- [PROJECT_STATE.md](PROJECT_STATE.md) - актуальное состояние, проверки и следующие шаги.
+- [DECISIONS.md](DECISIONS.md) - история решений; каждое новое решение записывается в ходе задачи.
+
+Перед переходом сохранить код и файлы контекста и дождаться их синхронизации.
+При передаче через Git новые файлы и изменения должны попасть в коммит и на другой
+компьютер. Затем открыть `C:\YD\Projects\BIC` и начать чат:
+«Прочитай AGENTS.md, PROJECT_STATE.md и DECISIONS.md. Продолжим BIC».
+В новом чате правила требуют прочитать контекст до изменений и обновить его перед
+итоговым ответом. Это переносит рабочие договорённости, но не полную историю переписки.
+
 ## Файлы
 
 - `src/main.cpp` — точка входа `wWinMain`, регистрация класса окна и цикл сообщений Win32.
 - `src/main_window.cpp` — обработка событий главного окна.
+- `src/office_document.h/.cpp` — общее открытие документов Excel, Word и PowerPoint через COM.
+- `src/contract_registry.cpp` — параметры команды «Реестр договоров».
 - `src/window_hotkeys.cpp` — глобальные сочетания клавиш для свёртывания и восстановления окна.
 - `CMakeLists.txt` — описание программы и настроек компилятора.
 - `CMakePresets.json` — общая конфигурация Debug / Ninja.
 - `build.ps1` — обнаружение MSVC 2022, конфигурация и сборка проекта.
+
+## Добавление команд открытия Office
+
+`OfficeDocument::Open` принимает структуру `OpenOptions`. Например, новая команда Word:
+
+```cpp
+const auto result = OfficeDocument::Open({
+    .path = L"C:\\Documents\\Договор.docx",
+    .application = OfficeDocument::Application::Word,
+    .window = {.placement = OfficeDocument::Placement::RightHalf},
+    .read_only = true,
+});
+if (!result) {
+    const auto message = OfficeDocument::DescribeError(result);
+    MessageBoxW(owner, message.c_str(), L"Договор", MB_OK | MB_ICONERROR);
+}
+```
+
+Тип приложения задаётся явно: `Excel`, `Word`, `PowerPoint`. Для других программ
+Office потребуется добавить обработку их объектной модели в общий модуль.
+Сигнатуры открытия различаются: [Excel](https://learn.microsoft.com/en-us/office/vba/api/excel.workbooks.open),
+[Word](https://learn.microsoft.com/en-us/office/vba/api/word.documents.open),
+[PowerPoint](https://learn.microsoft.com/en-us/office/vba/api/powerpoint.presentations.open).
+
+Размещение: `Keep`, `LeftHalf`, `RightHalf`, `Maximized`, `Rectangle`.
+Для `Rectangle` передаётся `window.rectangle = {left, top, right, bottom}` в экранных
+координатах; для половины экрана можно указать `window.monitor` (по умолчанию основной).
+`window.activate` управляет дополнительным запросом переднего плана; само Office
+также может активировать окно, а Windows может отклонить запрос активации.
+`reuse_application = true` позволяет подключиться к работающему Office, если он доступен через COM.
+При `false` запрашивается создание COM-сервера; отдельный процесс зависит от поведения Office.
+
+Результат содержит HRESULT, этап ошибки, признак уже открытого документа и отдельный
+статус восстановления `AutomationSecurity`. Это позволяет не открывать файл повторно
+после ошибки размещения. Безопасность открытия следует настройкам Office; исходное
+значение восстанавливается сразу после вызова открытия. COM-ресурсы освобождаются автоматически.
+
+Функция синхронная, вызывается в STA-потоке: запуск Office и его диалоги могут задержать
+обработку событий BIC. При частом или пакетном открытии следующий шаг — отдельный STA-поток
+с очередью команд. Общий интерфейс сокращает дублирование; заметного ускорения открытия
+сам по себе не даёт, поскольку время в основном уходит на Office и чтение файла.
+
+Тесты проверки параметров включаются через `-DBIC_BUILD_TESTS=ON`; запуск —
+`ctest --test-dir <BuildRoot>/debug --output-on-failure`. Они не запускают Office.
 
 ## Управление окном
 
