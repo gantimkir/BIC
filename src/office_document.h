@@ -30,7 +30,8 @@ struct OpenResult
 {
     HRESULT status = E_FAIL;
     Stage stage = Stage::Validate;
-    bool document_opened = false;
+    bool document_opened = false; // Документ доступен: найден ранее или открыт этим вызовом.
+    bool reused_document = false; // Книга Excel уже была открыта; повторного Open не было.
     HRESULT security_restore_status = S_OK;
     explicit operator bool() const noexcept
     {

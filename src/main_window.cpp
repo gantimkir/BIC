@@ -3,15 +3,18 @@
 #include "tray_icon.h"
 #include "window_hotkeys.h"
 #include "contract_registry.h"
+#include "ip_letterhead.h"
 
 namespace
 {
 constexpr int kCloseButtonId = 1;
 constexpr int kContractRegistryButtonId = 2;
+constexpr int kIpLetterheadButtonId = 3;
 constexpr int kButtonWidth = 100;
 constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
 constexpr int kButtonMargin = 16;
+constexpr int kButtonSpacing = 8;
 bool tray_icon_available = false;
 
 LRESULT OnCreate(HWND window, HINSTANCE instance)
@@ -27,6 +30,21 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
         return -1;
     }
     SendMessageW(registry_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Бланк располагается под реестром; команды кнопок обрабатываются отдельно в WM_COMMAND.
+    HWND ip_letterhead_button = CreateWindowExW(
+        0, L"BUTTON", L"Бланк ИП",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin, kButtonMargin + kButtonHeight + kButtonSpacing,
+        kRegistryButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpLetterheadButtonId)),
+        instance, nullptr);
+    if (ip_letterhead_button == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(ip_letterhead_button, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
     HWND button = CreateWindowExW(
@@ -80,6 +98,12 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kContractRegistryButtonId))
     {
         ContractRegistry::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kIpLetterheadButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kIpLetterheadButtonId))
+    {
+        IpLetterhead::Open(window);
         return true;
     }
     if (LOWORD(w_param) == kCloseButtonId && HIWORD(w_param) == BN_CLICKED &&

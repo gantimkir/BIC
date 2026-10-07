@@ -12,6 +12,8 @@ add_executable(BIC WIN32
     src/main_window.h
     src/contract_registry.cpp
     src/contract_registry.h
+    src/ip_letterhead.cpp
+    src/ip_letterhead.h
     src/office_document.cpp
     src/office_document.h
     src/window_hotkeys.cpp
