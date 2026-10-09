@@ -4,12 +4,14 @@
 #include "window_hotkeys.h"
 #include "contract_registry.h"
 #include "ip_letterhead.h"
+#include "ki_letterhead.h"
 
 namespace
 {
 constexpr int kCloseButtonId = 1;
 constexpr int kContractRegistryButtonId = 2;
 constexpr int kIpLetterheadButtonId = 3;
+constexpr int kKiLetterheadButtonId = 4;
 constexpr int kButtonWidth = 100;
 constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
@@ -45,6 +47,22 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
         return -1;
     }
     SendMessageW(ip_letterhead_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Бланк КИ использует отдельную команду, чтобы параметры документа не смешивались
+    // с маршрутизацией сообщений главного окна.
+    HWND ki_letterhead_button = CreateWindowExW(
+        0, L"BUTTON", L"Бланк КИ",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin, kButtonMargin + 2 * (kButtonHeight + kButtonSpacing),
+        kRegistryButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kKiLetterheadButtonId)),
+        instance, nullptr);
+    if (ki_letterhead_button == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(ki_letterhead_button, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
     HWND button = CreateWindowExW(
@@ -104,6 +122,12 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kIpLetterheadButtonId))
     {
         IpLetterhead::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kKiLetterheadButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kKiLetterheadButtonId))
+    {
+        KiLetterhead::Open(window);
         return true;
     }
     if (LOWORD(w_param) == kCloseButtonId && HIWORD(w_param) == BN_CLICKED &&
