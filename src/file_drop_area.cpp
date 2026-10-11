@@ -4,6 +4,7 @@
 
 #include <ole2.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 #include <wrl/client.h>
 
@@ -87,38 +88,56 @@ void CheckPath(std::wstring_view path, size_t& total_chars)
     {
         throw SelectionRejected{L"Суммарная длина путей превышает допустимый объём (262144 символа)."};
     }
-    // Drop — внешние данные. Разрешены абсолютные файловые пути, но не устройства,
-    // GLOBALROOT, относительные имена или специальные пространства Win32.
-    const auto drive_path = [](std::wstring_view value)
+    // Внешний путь должен иметь букву локального диска. UNC не допускается.
+    const std::wstring_view drive = path.starts_with(L"\\\\?\\") ? path.substr(4) : path;
+    if (drive.size() < 3 || !((drive[0] >= L'A' && drive[0] <= L'Z') ||
+            (drive[0] >= L'a' && drive[0] <= L'z')) ||
+        drive[1] != L':' || drive[2] != L'\\')
     {
-        return value.size() >= 3 &&
-            ((value[0] >= L'A' && value[0] <= L'Z') || (value[0] >= L'a' && value[0] <= L'z')) &&
-            value[1] == L':' && value[2] == L'\\';
-    };
-    const auto unc_path = [](std::wstring_view value)
-    {
-        const size_t slash = value.find(L'\\');
-        return slash != std::wstring_view::npos && slash != 0 && slash + 1 < value.size() &&
-            value[slash + 1] != L'\\';
-    };
-    bool accepted = drive_path(path);
-    if (path.starts_with(L"\\\\?\\UNC\\"))
-    {
-        accepted = unc_path(path.substr(8));
+        throw SelectionRejected{L"Разрешены только файлы из локальной папки с буквой диска."};
     }
-    else if (path.starts_with(L"\\\\?\\"))
+    const wchar_t root[]{drive[0], L':', L'\\', L'\0'};
+    // Подключённый сетевой диск имеет букву, но определяется как DRIVE_REMOTE.
+    const UINT type = GetDriveTypeW(root);
+    if (type != DRIVE_FIXED && type != DRIVE_REMOVABLE &&
+        type != DRIVE_CDROM && type != DRIVE_RAMDISK)
     {
-        accepted = drive_path(path.substr(4));
-    }
-    else if (path.starts_with(L"\\\\") && !path.starts_with(L"\\\\.\\"))
-    {
-        accepted = unc_path(path.substr(2));
-    }
-    if (!accepted)
-    {
-        throw SelectionRejected{L"Разрешены только абсолютные пути файлов на диске или в сетевой папке."};
+        throw SelectionRejected{L"Сетевые и недоступные диски не принимаются."};
     }
     total_chars += path.size();
+}
+
+// Проверка общей родительской папки применяется к диалогу и обоим видам drop.
+std::wstring_view ComparableFolder(std::wstring_view path)
+{
+    return path.starts_with(L"\\\\?\\") ? path.substr(4) : path;
+}
+
+std::wstring_view ParentFolder(std::wstring_view path)
+{
+    const size_t root_length = path.starts_with(L"\\\\?\\") ? 7 : 3;
+    const size_t separator = path.rfind(L'\\');
+    if (separator == std::wstring_view::npos || separator + 1 >= path.size() ||
+        separator + 1 < root_length)
+    {
+        throw SelectionRejected{L"Не удалось определить папку выбранного файла."};
+    }
+    return path.substr(0, separator == root_length - 1 ? root_length : separator);
+}
+
+std::wstring SelectionFolder(const std::vector<std::wstring>& paths)
+{
+    const std::wstring_view first = ComparableFolder(ParentFolder(paths.front()));
+    for (size_t index = 1; index < paths.size(); ++index)
+    {
+        const std::wstring_view other = ComparableFolder(ParentFolder(paths[index]));
+        if (CompareStringOrdinal(first.data(), static_cast<int>(first.size()),
+                other.data(), static_cast<int>(other.size()), TRUE) != CSTR_EQUAL)
+        {
+            throw SelectionRejected{L"Все выбранные файлы должны находиться в одной папке."};
+        }
+    }
+    return std::wstring(first);
 }
 
 class UniqueHandle
@@ -150,22 +169,40 @@ private:
 
 std::wstring MetadataPath(const std::wstring& path)
 {
-    // CheckPath уже отверг устройства. Расширенный префикс позволяет открыть длинный
-    // путь без зависимости от longPathAware в манифесте приложения.
-    if (path.starts_with(L"\\\\?\\"))
+    // Расширенный префикс даёт доступ к длинным локальным путям.
+    return path.starts_with(L"\\\\?\\") ? path : L"\\\\?\\" + path;
+}
+
+// Проверяем и конечную цель ссылки, чтобы локальный путь не скрывал UNC.
+DWORD CheckResolvedLocal(HANDLE handle)
+{
+    const DWORD required = GetFinalPathNameByHandleW(handle, nullptr, 0, FILE_NAME_OPENED);
+    if (required == 0) { return GetLastError(); }
+    if (required > kMaxPathChars + 16) { return ERROR_BUFFER_OVERFLOW; }
+    std::wstring final_path(required, L'\0');
+    const DWORD copied = GetFinalPathNameByHandleW(handle, final_path.data(),
+        required, FILE_NAME_OPENED);
+    if (copied == 0 || copied >= required)
     {
-        return path;
+        return copied == 0 ? GetLastError() : ERROR_BUFFER_OVERFLOW;
     }
-    if (path.starts_with(L"\\\\"))
+    final_path.resize(copied);
+    const std::wstring_view path = ComparableFolder(final_path);
+    if (path.size() < 3 || path[1] != L':' || path[2] != L'\\')
     {
-        return L"\\\\?\\UNC\\" + path.substr(2);
+        return ERROR_NETWORK_ACCESS_DENIED;
     }
-    return L"\\\\?\\" + path;
+    const wchar_t root[]{path[0], L':', L'\\', L'\0'};
+    const UINT type = GetDriveTypeW(root);
+    return type == DRIVE_FIXED || type == DRIVE_REMOVABLE ||
+        type == DRIVE_CDROM || type == DRIVE_RAMDISK
+        ? ERROR_SUCCESS : ERROR_NETWORK_ACCESS_DENIED;
 }
 
 struct MetadataJob
 {
     std::vector<std::wstring> paths;
+    std::wstring folder;
     std::wstring report;
     DWORD error = ERROR_SUCCESS;
     std::atomic<bool> cancel{false};
@@ -183,14 +220,22 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
     argument.reset();
     try
     {
+        // До чтения размеров проверяем конечное расположение общей папки.
+        const std::wstring api_folder = MetadataPath(job->folder);
+        const UniqueHandle folder(CreateFileW(api_folder.c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+        job->error = folder.get() == INVALID_HANDLE_VALUE ? GetLastError()
+            : CheckResolvedLocal(folder.get());
         for (const auto& path : job->paths)
         {
-            if (job->cancel.load())
+            if (job->error != ERROR_SUCCESS || job->cancel.load())
             {
-                job->error = ERROR_CANCELLED;
+                if (job->error == ERROR_SUCCESS) { job->error = ERROR_CANCELLED; }
                 break;
             }
-            std::wstring line = path + L": "; // Полный путь различает одинаковые имена.
+            // Общую папку выводим отдельно в последней строке отчёта.
+            std::wstring line = path.substr(path.rfind(L'\\') + 1) + L": ";
             const std::wstring api_path = MetadataPath(path);
             // Без OPEN_REPARSE_POINT открывается целевой файл символьной ссылки.
             // Читаем только метаданные, не содержимое; совместный доступ не блокирует
@@ -208,29 +253,39 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
             {
                 file_error = GetLastError();
             }
-            else if (GetFileType(file.get()) != FILE_TYPE_DISK)
-            {
-                file_error = ERROR_INVALID_DATA; // Устройства и каналы не являются файлами списка.
-            }
             else
             {
-                BY_HANDLE_FILE_INFORMATION info{};
-                LARGE_INTEGER size{};
-                if (!GetFileInformationByHandle(file.get(), &info))
+                file_error = CheckResolvedLocal(file.get());
+                if (file_error == ERROR_NETWORK_ACCESS_DENIED)
                 {
-                    file_error = GetLastError();
+                    // Ссылка на сетевой файл недопустима и в локальной папке.
+                    job->error = file_error;
+                    break;
                 }
-                else if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+                if (file_error == ERROR_SUCCESS && GetFileType(file.get()) != FILE_TYPE_DISK)
                 {
-                    line += L"каталог, а не файл";
+                    file_error = ERROR_INVALID_DATA;
                 }
-                else if (!GetFileSizeEx(file.get(), &size))
+                if (file_error == ERROR_SUCCESS)
                 {
-                    file_error = GetLastError();
-                }
-                else
-                {
-                    line += std::to_wstring(size.QuadPart) + L" байт";
+                    BY_HANDLE_FILE_INFORMATION info{};
+                    LARGE_INTEGER size{};
+                    if (!GetFileInformationByHandle(file.get(), &info))
+                    {
+                        file_error = GetLastError();
+                    }
+                    else if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+                    {
+                        line += L"каталог, а не файл";
+                    }
+                    else if (!GetFileSizeEx(file.get(), &size))
+                    {
+                        file_error = GetLastError();
+                    }
+                    else
+                    {
+                        line += std::to_wstring(size.QuadPart) + L" байт";
+                    }
                 }
             }
             if (file_error != ERROR_SUCCESS)
@@ -244,6 +299,19 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                 break;
             }
             job->report += line;
+        }
+        if (job->error == ERROR_SUCCESS)
+        {
+            // Путь общей папки занимает последнюю строку списка.
+            const std::wstring footer = L"Папка: " + job->folder;
+            if (footer.size() > kMaxReportChars - job->report.size())
+            {
+                job->error = ERROR_BUFFER_OVERFLOW;
+            }
+            else
+            {
+                job->report += footer;
+            }
         }
     }
     catch (const std::bad_alloc&)
@@ -264,7 +332,8 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
 struct MetadataDialogContext
 {
     std::shared_ptr<MetadataJob> job;
-    UniqueHandle thread;
+    // До запуска worker дескриптора нет; затем им владеет контекст диалога.
+    UniqueHandle thread{nullptr};
     ULONGLONG started = GetTickCount64();
 };
 
@@ -315,6 +384,10 @@ INT_PTR CALLBACK SizesDialogProcedure(HWND dialog, UINT message, WPARAM w_param,
             {
                 text = L"Недостаточно памяти для списка файлов. Выберите меньше файлов.";
             }
+            else if (context->job->error == ERROR_NETWORK_ACCESS_DENIED)
+            {
+                text = L"Выберите файлы из одной локальной папки. Сетевые расположения не принимаются.";
+            }
             else if (context->job->error != ERROR_SUCCESS)
             {
                 text = L"Получение размеров отменено или список превышает допустимый объём.";
@@ -364,6 +437,7 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     {
         CheckPath(path, total_chars);
     }
+    const std::wstring folder = SelectionFolder(paths);
     bool expected = false;
     if (!metadata_worker_active.compare_exchange_strong(expected, true))
     {
@@ -384,6 +458,7 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     } slot;
     const auto job = std::make_shared<MetadataJob>();
     job->paths = std::move(paths);
+    job->folder = folder;
     auto argument = std::make_unique<std::shared_ptr<MetadataJob>>(job);
     MetadataDialogContext context{job};
     const uintptr_t thread = _beginthreadex(nullptr, 0, MetadataWorker, argument.get(), 0, nullptr);
@@ -879,8 +954,8 @@ LRESULT AreaWindowProcedureImpl(HWND window, UINT message, WPARAM w_param, LPARA
         // DC_BRUSH принадлежит Windows; цвет задаётся только для этого контекста рисования.
         const auto brush = static_cast<HBRUSH>(GetStockObject(DC_BRUSH));
         SetDCBrushColor(dc, kAreaColor);
+        // Голубая заливка до края устраняет серую обводку.
         FillRect(dc, &client, brush);
-        FrameRect(dc, &client, static_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
         const HGDIOBJ old_font = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
         SetBkMode(dc, TRANSPARENT);
         SetTextColor(dc, RGB(25, 60, 90));
