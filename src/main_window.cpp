@@ -5,6 +5,9 @@
 #include "contract_registry.h"
 #include "ip_letterhead.h"
 #include "ki_letterhead.h"
+#include "pzz_61_48_text.h"
+#include "pzz_61_41_text.h"
+#include "pzz_61_48_graphics.h"
 
 namespace
 {
@@ -12,6 +15,9 @@ constexpr int kCloseButtonId = 1;
 constexpr int kContractRegistryButtonId = 2;
 constexpr int kIpLetterheadButtonId = 3;
 constexpr int kKiLetterheadButtonId = 4;
+constexpr int kPzz6148TextButtonId = 5;
+constexpr int kPzz6141TextButtonId = 6;
+constexpr int kPzz6148GraphicsButtonId = 7;
 constexpr int kButtonWidth = 100;
 constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
@@ -63,6 +69,54 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
         return -1;
     }
     SendMessageW(ki_letterhead_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Кнопка ПЗЗ 61-48 продолжает вертикальную группу документов; собственный ID сохраняет
+    // независимую маршрутизацию команды и не связывает главное окно с параметрами Word.
+    HWND pzz_61_48_text_button = CreateWindowExW(
+        0, L"BUTTON", L"ПЗЗ 61-48. Текст",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin, kButtonMargin + 3 * (kButtonHeight + kButtonSpacing),
+        kRegistryButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6148TextButtonId)),
+        instance, nullptr);
+    if (pzz_61_48_text_button == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(pzz_61_48_text_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Кнопка ПЗЗ 61-41 продолжает вертикальную группу документов; собственный ID сохраняет
+    // независимую маршрутизацию команды и не связывает главное окно с параметрами Word.
+    HWND pzz_61_41_text_button = CreateWindowExW(
+        0, L"BUTTON", L"ПЗЗ 61-41. Текст",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin, kButtonMargin + 4 * (kButtonHeight + kButtonSpacing),
+        kRegistryButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6141TextButtonId)),
+        instance, nullptr);
+    if (pzz_61_41_text_button == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(pzz_61_41_text_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Графика ПЗЗ открывается отдельной командой просмотра изображения и поэтому
+    // получает собственный ID, не связанный с командами Word.
+    HWND pzz_61_48_graphics_button = CreateWindowExW(
+        0, L"BUTTON", L"ПЗЗ 61-48. Графика",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin, kButtonMargin + 5 * (kButtonHeight + kButtonSpacing),
+        kRegistryButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6148GraphicsButtonId)),
+        instance, nullptr);
+    if (pzz_61_48_graphics_button == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(pzz_61_48_graphics_button, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
     HWND button = CreateWindowExW(
@@ -128,6 +182,24 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kKiLetterheadButtonId))
     {
         KiLetterhead::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kPzz6148TextButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kPzz6148TextButtonId))
+    {
+        Pzz6148Text::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kPzz6141TextButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kPzz6141TextButtonId))
+    {
+        Pzz6141Text::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kPzz6148GraphicsButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kPzz6148GraphicsButtonId))
+    {
+        Pzz6148Graphics::Open(window);
         return true;
     }
     if (LOWORD(w_param) == kCloseButtonId && HIWORD(w_param) == BN_CLICKED &&
