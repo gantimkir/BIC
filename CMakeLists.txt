@@ -22,6 +22,8 @@ add_executable(BIC WIN32
     src/pzz_61_41_text.h
     src/pzz_61_48_graphics.cpp
     src/pzz_61_48_graphics.h
+    src/pzz_61_41_graphics.cpp
+    src/pzz_61_41_graphics.h
     src/office_document.cpp
     src/office_document.h
     src/window_hotkeys.cpp

@@ -8,6 +8,7 @@
 #include "pzz_61_48_text.h"
 #include "pzz_61_41_text.h"
 #include "pzz_61_48_graphics.h"
+#include "pzz_61_41_graphics.h"
 
 namespace
 {
@@ -18,12 +19,74 @@ constexpr int kKiLetterheadButtonId = 4;
 constexpr int kPzz6148TextButtonId = 5;
 constexpr int kPzz6141TextButtonId = 6;
 constexpr int kPzz6148GraphicsButtonId = 7;
+constexpr int kPzz6141GraphicsButtonId = 8;
+constexpr int kPzz6148GroupId = 9;
+constexpr int kPzz6141GroupId = 10;
 constexpr int kButtonWidth = 100;
 constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
 constexpr int kButtonMargin = 16;
 constexpr int kButtonSpacing = 8;
+// Общие размеры обеих рамок: отступы по бокам и зазор между кнопками равны.
+// Надпись рамки занимает верхние 13 пикселей, нижняя граница — ещё 3 пикселя.
+constexpr int kPzzGroupSideInset = 4;
+constexpr int kPzzGroupButtonGap = kPzzGroupSideInset;
+constexpr int kPzzGroupTopInset = 13;
+constexpr int kPzzGroupBottomInset = 3;
+constexpr int kPzzGroupHeight = kPzzGroupTopInset + kButtonHeight + kPzzGroupBottomInset;
+constexpr int kPzzGroupButtonWidth =
+    (kRegistryButtonWidth - 2 * kPzzGroupSideInset - kPzzGroupButtonGap) / 2;
 bool tray_icon_available = false;
+
+// Создаёт рамку и две команды ПЗЗ с одинаковой геометрией (180 x 48, кнопки 84 x 32).
+// Возвращает false при ошибке создания любого элемента; OnCreate тогда возвращает -1,
+// и Windows уничтожает главное окно вместе с уже созданными дочерними элементами.
+// Рамка только рисует границу: кнопки остаются дочерними элементами главного окна,
+// поэтому прежние WM_COMMAND, GetDlgItem и ID команд продолжают работать.
+bool CreatePzzGroup(HWND window, HINSTANCE instance, const wchar_t* caption,
+    int group_id, int text_button_id, int graphics_button_id, int top)
+{
+    HWND group = CreateWindowExW(
+        0, L"BUTTON", caption,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_GROUPBOX,
+        kButtonMargin, top, kRegistryButtonWidth, kPzzGroupHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(group_id)), instance, nullptr);
+    if (group == nullptr)
+    {
+        return false;
+    }
+    // WS_CLIPSIBLINGS не позволяет рамке закрашивать соседние кнопки при перерисовке.
+    SendMessageW(group, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    HWND text_button = CreateWindowExW(
+        0, L"BUTTON", L"Текст",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin + kPzzGroupSideInset, top + kPzzGroupTopInset,
+        kPzzGroupButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(text_button_id)), instance, nullptr);
+    if (text_button == nullptr)
+    {
+        return false;
+    }
+    SendMessageW(text_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+
+    // Правая кнопка отделена от левой тем же зазором, что и от боковых границ рамки.
+    HWND graphics_button = CreateWindowExW(
+        0, L"BUTTON", L"Графика",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        kButtonMargin + kPzzGroupSideInset + kPzzGroupButtonWidth + kPzzGroupButtonGap,
+        top + kPzzGroupTopInset, kPzzGroupButtonWidth, kButtonHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(graphics_button_id)), instance, nullptr);
+    if (graphics_button == nullptr)
+    {
+        return false;
+    }
+    SendMessageW(graphics_button, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+    return true;
+}
 
 LRESULT OnCreate(HWND window, HINSTANCE instance)
 {
@@ -71,53 +134,20 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     SendMessageW(ki_letterhead_button, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
-    // Кнопка ПЗЗ 61-48 продолжает вертикальную группу документов; собственный ID сохраняет
-    // независимую маршрутизацию команды и не связывает главное окно с параметрами Word.
-    HWND pzz_61_48_text_button = CreateWindowExW(
-        0, L"BUTTON", L"ПЗЗ 61-48. Текст",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin, kButtonMargin + 3 * (kButtonHeight + kButtonSpacing),
-        kRegistryButtonWidth, kButtonHeight, window,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6148TextButtonId)),
-        instance, nullptr);
-    if (pzz_61_48_text_button == nullptr)
+    // Обе территории имеют одинаковые рамки; между ними сохраняется зазор 8 пикселей.
+    // Собственные ID рамок не пересекаются с ID четырёх команд открытия документов.
+    constexpr int pzz_groups_top = kButtonMargin + 3 * (kButtonHeight + kButtonSpacing);
+    if (!CreatePzzGroup(window, instance, L"61-48", kPzz6148GroupId,
+            kPzz6148TextButtonId, kPzz6148GraphicsButtonId, pzz_groups_top))
     {
         return -1;
     }
-    SendMessageW(pzz_61_48_text_button, WM_SETFONT,
-        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-
-    // Кнопка ПЗЗ 61-41 продолжает вертикальную группу документов; собственный ID сохраняет
-    // независимую маршрутизацию команды и не связывает главное окно с параметрами Word.
-    HWND pzz_61_41_text_button = CreateWindowExW(
-        0, L"BUTTON", L"ПЗЗ 61-41. Текст",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin, kButtonMargin + 4 * (kButtonHeight + kButtonSpacing),
-        kRegistryButtonWidth, kButtonHeight, window,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6141TextButtonId)),
-        instance, nullptr);
-    if (pzz_61_41_text_button == nullptr)
+    if (!CreatePzzGroup(window, instance, L"61-41", kPzz6141GroupId,
+            kPzz6141TextButtonId, kPzz6141GraphicsButtonId,
+            pzz_groups_top + kPzzGroupHeight + kButtonSpacing))
     {
         return -1;
     }
-    SendMessageW(pzz_61_41_text_button, WM_SETFONT,
-        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-
-    // Графика ПЗЗ открывается отдельной командой просмотра изображения и поэтому
-    // получает собственный ID, не связанный с командами Word.
-    HWND pzz_61_48_graphics_button = CreateWindowExW(
-        0, L"BUTTON", L"ПЗЗ 61-48. Графика",
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin, kButtonMargin + 5 * (kButtonHeight + kButtonSpacing),
-        kRegistryButtonWidth, kButtonHeight, window,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kPzz6148GraphicsButtonId)),
-        instance, nullptr);
-    if (pzz_61_48_graphics_button == nullptr)
-    {
-        return -1;
-    }
-    SendMessageW(pzz_61_48_graphics_button, WM_SETFONT,
-        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
     HWND button = CreateWindowExW(
         0, L"BUTTON", L"Закрыть",
@@ -200,6 +230,12 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kPzz6148GraphicsButtonId))
     {
         Pzz6148Graphics::Open(window);
+        return true;
+    }
+    if (LOWORD(w_param) == kPzz6141GraphicsButtonId && HIWORD(w_param) == BN_CLICKED &&
+        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kPzz6141GraphicsButtonId))
+    {
+        Pzz6141Graphics::Open(window);
         return true;
     }
     if (LOWORD(w_param) == kCloseButtonId && HIWORD(w_param) == BN_CLICKED &&
