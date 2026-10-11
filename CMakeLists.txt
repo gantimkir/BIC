@@ -24,6 +24,8 @@ add_executable(BIC WIN32
     src/pzz_61_48_graphics.h
     src/pzz_61_41_graphics.cpp
     src/pzz_61_41_graphics.h
+    src/file_drop_area.cpp
+    src/file_drop_area.h
     src/office_document.cpp
     src/office_document.h
     src/window_hotkeys.cpp

@@ -9,6 +9,7 @@
 #include "pzz_61_41_text.h"
 #include "pzz_61_48_graphics.h"
 #include "pzz_61_41_graphics.h"
+#include "file_drop_area.h"
 
 namespace
 {
@@ -22,6 +23,8 @@ constexpr int kPzz6148GraphicsButtonId = 7;
 constexpr int kPzz6141GraphicsButtonId = 8;
 constexpr int kPzz6148GroupId = 9;
 constexpr int kPzz6141GroupId = 10;
+constexpr int kFilesGroupId = 11;
+constexpr int kFileDropAreaId = 12;
 constexpr int kButtonWidth = 100;
 constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
@@ -145,6 +148,27 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     if (!CreatePzzGroup(window, instance, L"61-41", kPzz6141GroupId,
             kPzz6141TextButtonId, kPzz6141GraphicsButtonId,
             pzz_groups_top + kPzzGroupHeight + kButtonSpacing))
+    {
+        return -1;
+    }
+
+    // Третья рамка повторяет размеры ПЗЗ, а цветная область занимает всю её
+    // внутреннюю ширину. Собственный класс области обрабатывает drop и выбор файлов.
+    constexpr int files_group_top = pzz_groups_top + 2 * (kPzzGroupHeight + kButtonSpacing);
+    HWND files_group = CreateWindowExW(
+        0, L"BUTTON", L"PDF",
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_GROUPBOX,
+        kButtonMargin, files_group_top, kRegistryButtonWidth, kPzzGroupHeight, window,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFilesGroupId)), instance, nullptr);
+    if (files_group == nullptr)
+    {
+        return -1;
+    }
+    SendMessageW(files_group, WM_SETFONT,
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+    if (FileDropArea::Create(window, instance, kFileDropAreaId,
+            kButtonMargin + kPzzGroupSideInset, files_group_top + kPzzGroupTopInset,
+            kRegistryButtonWidth - 2 * kPzzGroupSideInset, kButtonHeight) == nullptr)
     {
         return -1;
     }
