@@ -12,6 +12,10 @@ add_executable(BIC WIN32
     src/main_window.h
     src/contract_registry.cpp
     src/contract_registry.h
+    src/das_fl_letterhead.cpp
+    src/das_fl_letterhead.h
+    src/das_ul_letterhead.cpp
+    src/das_ul_letterhead.h
     src/ip_letterhead.cpp
     src/ip_letterhead.h
     src/ki_letterhead.cpp

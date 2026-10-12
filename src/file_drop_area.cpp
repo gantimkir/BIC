@@ -60,7 +60,23 @@ std::atomic<bool> metadata_worker_active{false};
 struct SelectionRejected
 {
     const wchar_t* message; // Только строковые литералы: описание ошибки не требует аллокации.
+    bool warning = false; // Отказ по правилам выбора — предупреждение, сбой API — ошибка.
 };
+
+struct DropSelection
+{
+    std::vector<std::wstring> paths;
+    const wchar_t* warning = nullptr; // Статический текст; для пустого paths обработки не будет.
+};
+
+// Маска системного диалога не гарантирует тип выбранного файла. Проверяем
+// расширение независимо от способа выбора; .PDF принимается так же, как .pdf.
+// Содержимое файла здесь не читается: это фильтр расширений, не анализ PDF.
+bool IsPdfPath(std::wstring_view path) noexcept
+{
+    return path.size() >= 4 && CompareStringOrdinal(path.data() + path.size() - 4, 4,
+        L".pdf", 4, TRUE) == CSTR_EQUAL;
+}
 
 void ShowError(HWND owner, const wchar_t* action, unsigned long error) noexcept
 {
@@ -435,6 +451,10 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     size_t total_chars = 0;
     for (const auto& path : paths)
     {
+        if (!IsPdfPath(path))
+        {
+            throw SelectionRejected{L"Выберите только файлы с расширением .pdf.", true};
+        }
         CheckPath(path, total_chars);
     }
     const std::wstring folder = SelectionFolder(paths);
@@ -480,6 +500,20 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     if (result == -1)
     {
         ShowError(owner, L"Не удалось показать размеры файлов.", dialog_error);
+    }
+}
+
+// Предупреждение выводится до запуска получения размеров. Объект цели OLE
+// больше не нужен: пути уже перемещены в локальный список, устойчивый к модальному циклу.
+void ShowDropSelection(HWND owner, DropSelection selection)
+{
+    if (selection.warning != nullptr)
+    {
+        MessageBoxW(owner, selection.warning, L"PDF", MB_OK | MB_ICONWARNING);
+    }
+    if (!selection.paths.empty() && IsWindow(owner) && IsWindowEnabled(owner))
+    {
+        ShowFileSizes(owner, std::move(selection.paths));
     }
 }
 
@@ -637,20 +671,21 @@ void ValidateDropPayload(HDROP drop)
 
 // Только заимствуем CF_HDROP: WM_DROPFILES освобождается DragFinish,
 // а IDataObject::GetData — ReleaseStgMedium. Лимиты проверяются до аллокаций.
-std::vector<std::wstring> ReadDropPaths(HDROP drop)
+DropSelection ReadDropSelection(HDROP drop)
 {
     ValidateDropPayload(drop);
     const UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
     CheckCount(count);
-    std::vector<std::wstring> paths;
-    paths.reserve(count);
+    DropSelection selection;
+    selection.paths.reserve(count);
     size_t total_chars = 0;
+    bool skipped_non_pdf = false;
     for (UINT index = 0; index < count; ++index)
     {
         const UINT length = DragQueryFileW(drop, index, nullptr, 0);
-        if (length == 0 || length > kMaxPathChars || length > kMaxTotalPathChars - total_chars)
+        if (length == 0 || length > kMaxPathChars)
         {
-            throw SelectionRejected{L"Список содержит пустой путь или превышает допустимую длину."};
+            throw SelectionRejected{L"Список содержит пустой или слишком длинный путь."};
         }
         std::wstring path(static_cast<size_t>(length) + 1, L'\0');
         const UINT copied = DragQueryFileW(drop, index, path.data(), length + 1);
@@ -659,20 +694,35 @@ std::vector<std::wstring> ReadDropPaths(HDROP drop)
             throw SelectionRejected{L"Не удалось полностью получить путь перетаскиваемого файла."};
         }
         path.resize(copied);
+        if (!IsPdfPath(path))
+        {
+            // Не-PDF не проходят проверку диска/папки и не открываются для получения размеров.
+            skipped_non_pdf = true;
+            continue;
+        }
         CheckPath(path, total_chars);
-        paths.push_back(std::move(path));
+        selection.paths.push_back(std::move(path));
     }
-    return paths;
+    if (selection.paths.empty())
+    {
+        selection.warning = L"В перенесённом наборе нет PDF-файлов. Файлы других типов не обрабатываются.";
+    }
+    // Любое непустое количество PDF, включая одиночный перенос, допускается к обработке.
+    else if (skipped_non_pdf)
+    {
+        selection.warning = L"Файлы без расширения .pdf пропущены. Будут обработаны только PDF-файлы.";
+    }
+    return selection;
 }
 
-std::vector<std::wstring> DroppedPaths(HDROP drop)
+DropSelection DroppedFiles(HDROP drop)
 {
     struct DropGuard
     {
         HDROP handle;
         ~DropGuard() { DragFinish(handle); }
     } guard{drop};
-    return ReadDropPaths(drop); // Резервный протокол Shell сохраняет свой порядок освобождения.
+    return ReadDropSelection(drop);
 }
 
 // Современный Проводник согласует перенос через OLE. Цель принимает только
@@ -726,7 +776,7 @@ public:
         }
         // Модальное окно отключает владельца: новые drop во время показа не принимаем.
         *effect = accepts_files_ && IsWindowEnabled(GetParent(window_)) &&
-            (*effect & DROPEFFECT_COPY) != 0 && pending_paths_.empty() && pending_error_ == nullptr
+            (*effect & DROPEFFECT_COPY) != 0 && pending_paths_.empty() && pending_error_ == nullptr && pending_warning_ == nullptr
             ? DROPEFFECT_COPY : DROPEFFECT_NONE;
         return S_OK;
     }
@@ -744,7 +794,7 @@ public:
         catch (const SelectionRejected& error)
         {
             if (effect != nullptr) { *effect = DROPEFFECT_NONE; }
-            return QueueFailure(error.message, E_INVALIDARG);
+            return QueueFailure(error.message, error.warning ? S_OK : E_INVALIDARG, error.warning);
         }
         catch (const std::bad_alloc&)
         {
@@ -767,7 +817,7 @@ public:
         *effect = DROPEFFECT_NONE;
         accepts_files_ = false;
         if (data == nullptr || !copy_allowed || !IsWindowEnabled(GetParent(window_)) ||
-            !pending_paths_.empty() || pending_error_ != nullptr)
+            !pending_paths_.empty() || pending_error_ != nullptr || pending_warning_ != nullptr)
         {
             return S_OK;
         }
@@ -794,11 +844,13 @@ public:
         {
             return DV_E_TYMED;
         }
-        pending_paths_ = ReadDropPaths(reinterpret_cast<HDROP>(storage.medium.hGlobal));
+        DropSelection selection = ReadDropSelection(reinterpret_cast<HDROP>(storage.medium.hGlobal));
+        pending_paths_ = std::move(selection.paths);
+        pending_warning_ = selection.warning;
         // Освобождаем данные источника до постановки сообщения с модальным диалогом.
         ReleaseStgMedium(&storage.medium);
         storage.acquired = false;
-        if (pending_paths_.empty())
+        if (pending_paths_.empty() && pending_warning_ == nullptr)
         {
             return S_OK;
         }
@@ -808,15 +860,21 @@ public:
         {
             const DWORD error = GetLastError();
             pending_paths_.clear();
+            pending_warning_ = nullptr;
             return HRESULT_FROM_WIN32(error);
         }
-        *effect = DROPEFFECT_COPY;
+        *effect = pending_paths_.empty() ? DROPEFFECT_NONE : DROPEFFECT_COPY;
         return S_OK;
     }
     std::vector<std::wstring> TakePaths()
     {
         // Перемещаем список перед модальным циклом, чтобы освободить состояние drop.
         return std::exchange(pending_paths_, {});
+    }
+
+    const wchar_t* TakeWarning() noexcept
+    {
+        return std::exchange(pending_warning_, nullptr);
     }
 
     const wchar_t* TakeError() noexcept
@@ -827,13 +885,15 @@ public:
 private:
     // Ошибка ставится в очередь без выделения памяти. При уничтожении окна
     // ни текст, ни список не оставляют висячих указателей в очереди сообщений.
-    HRESULT QueueFailure(const wchar_t* message, HRESULT result) noexcept
+    HRESULT QueueFailure(const wchar_t* message, HRESULT result, bool warning = false) noexcept
     {
         pending_paths_.clear();
-        pending_error_ = message;
+        pending_error_ = warning ? nullptr : message;
+        pending_warning_ = warning ? message : nullptr;
         if (!PostMessageW(window_, kShowDroppedFiles, 0, 0))
         {
             pending_error_ = nullptr;
+            pending_warning_ = nullptr;
         }
         return result;
     }
@@ -842,6 +902,7 @@ private:
     HWND window_;
     bool accepts_files_ = false;
     const wchar_t* pending_error_ = nullptr;
+    const wchar_t* pending_warning_ = nullptr;
     std::vector<std::wstring> pending_paths_;
 };
 
@@ -901,7 +962,8 @@ LRESULT AreaWindowProcedureImpl(HWND window, UINT message, WPARAM w_param, LPARA
             }
             else
             {
-                ShowFileSizes(GetParent(window), target->TakePaths());
+                DropSelection selection{target->TakePaths(), target->TakeWarning()};
+                ShowDropSelection(GetParent(window), std::move(selection));
             }
         }
         return 0;
@@ -912,7 +974,7 @@ LRESULT AreaWindowProcedureImpl(HWND window, UINT message, WPARAM w_param, LPARA
             DragFinish(reinterpret_cast<HDROP>(w_param));
             return 0;
         }
-        ShowFileSizes(GetParent(window), DroppedPaths(reinterpret_cast<HDROP>(w_param)));
+        ShowDropSelection(GetParent(window), DroppedFiles(reinterpret_cast<HDROP>(w_param)));
         return 0;
     case WM_LBUTTONDOWN:
         SetFocus(window);
@@ -982,7 +1044,8 @@ LRESULT CALLBACK AreaWindowProcedure(HWND window, UINT message, WPARAM w_param, 
     }
     catch (const SelectionRejected& error)
     {
-        MessageBoxW(GetParent(window), error.message, L"PDF", MB_OK | MB_ICONERROR);
+        MessageBoxW(GetParent(window), error.message, L"PDF",
+            MB_OK | (error.warning ? MB_ICONWARNING : MB_ICONERROR));
     }
     catch (const std::bad_alloc&)
     {
