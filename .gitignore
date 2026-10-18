@@ -6,3 +6,4 @@ CMakeUserPresets.json
 *.obj
 *.pdb
 *.exe
+.runtime-downloads/

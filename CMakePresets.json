@@ -11,7 +11,20 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "BIC Windows Release (portable)",
+      "inherits": "windows-debug",
+      "binaryDir": "$env{BIC_BUILD_ROOT}/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BIC_REQUIRE_GHOSTSCRIPT": "ON"
+      }
     }
   ],
-  "buildPresets": [{ "name": "windows-debug", "configurePreset": "windows-debug" }]
+  "buildPresets": [
+    { "name": "windows-debug", "configurePreset": "windows-debug" },
+    { "name": "windows-release", "configurePreset": "windows-release" }
+  ]
 }

@@ -65,12 +65,14 @@ PowerShell не требуется: `build.ps1` находит Visual Studio 202
 изменения через GitHub. Не синхронизируйте одну рабочую папку вместе с каталогом
 `.git` одновременно между несколькими компьютерами.
 
-Например, клонируйте проект в `C:\Dev\BIC`:
+Текущий рабочий каталог проекта — `C:\Projects\BIC` (D-038).
+Если проект уже находится там, повторное клонирование не требуется.
+На новой машине можно получить его так:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Dev | Out-Null
-git clone https://github.com/gantimkir/BIC.git C:\Dev\BIC
-cd C:\Dev\BIC
+New-Item -ItemType Directory -Force C:\Projects | Out-Null
+git clone https://github.com/gantimkir/BIC.git C:\Projects\BIC
+cd C:\Projects\BIC
 ```
 
 Для приватного репозитория Git Credential Manager предложит войти в GitHub через
@@ -162,6 +164,15 @@ git push
 
 ## 8. Частые проблемы
 
+### Несовпадение исходного каталога в CMake-кэше после переноса проекта
+
+Повторно запустите обновлённый `build.ps1` с тем же `-BuildRoot`, который
+использовался при ошибке (для F5 он берётся из `bic.buildRoot` в VS Code).
+Скрипт обнаружит прежний `CMAKE_HOME_DIRECTORY` и выполнит конфигурацию
+с `--fresh`, затем сборку. CMake пересоздаст `CMakeCache.txt` и `CMakeFiles`.
+Параметры, заданные только в старом кэше, потребуется задать заново;
+например, `BIC_BUILD_TESTS` вернётся к `OFF`.
+
 ### `Visual Studio Installer / vswhere not found`
 
 Visual Studio 2022 или Build Tools установлены не полностью. Запустите Visual
@@ -187,7 +198,7 @@ Studio Installer и установите рабочую нагрузку раз�
 работать именно с этим каталогом:
 
 ```powershell
-git config --global --add safe.directory C:/Dev/BIC
+git config --global --add safe.directory C:/Projects/BIC
 ```
 
 Не добавляйте универсальное значение `*`.
@@ -197,3 +208,50 @@ git config --global --add safe.directory C:/Dev/BIC
 Повторите `git push` и войдите через окно Git Credential Manager. Если выбран
 ручной HTTPS-вход, вместо пароля требуется персональный токен. Никогда не
 сохраняйте токены в исходниках или командных файлах проекта.
+
+## 9. Автономная поставка BIC с Ghostscript
+
+Формат D-042 — переносимая папка, без отдельной установки Ghostscript пользователем.
+Этап 1 содержит только программный API; кнопок сжатия ещё нет.
+
+В исходниках уже находится `third_party/ghostscript`: runtime Ghostscript 10.08.0
+x64 (DLL, lib, Resource, iccprofiles, оригинальная документация), локальные DLL
+Microsoft CRT и соответствующий исходный архив Ghostscript. Источники и лицензии
+описаны в [памятке комплекта](third_party/ghostscript/README.md).
+Не исключайте бинарные зависимости и исходный архив из передачи проекта.
+
+Разработчик формирует переносимую поставку командой:
+
+```powershell
+.\build.ps1 -BuildRoot C:\Dev\Build\BIC-Z7 -Configuration Release -Portable
+```
+
+Скрипт использует отдельные preset `windows-release` и каталог `<BuildRoot>\release`,
+затем `cmake --install` в `<BuildRoot>\portable`. Release BIC компонуется с /MT;
+DLL Microsoft CRT для Ghostscript входят в runtime. Отсутствие обязательных
+компонентов runtime или исходного архива останавливает Release-конфигурацию.
+Debug остаётся прежним вариантом разработки с /MDd; его не распространять как portable.
+
+Структура результата:
+
+```text
+portable/
+  BIC.exe
+  runtime/ghostscript/
+    bin/gsdll64.dll, DLL Microsoft CRT
+    lib/, Resource/, iccprofiles/, doc/
+  licenses/ghostscript/
+    README.md
+    source/ghostscript-10.08.0.tar.xz
+```
+
+Пользователь копирует папку целиком на Windows 10/11 x64 и запускает BIC.exe.
+Ghostscript, его EXE, установщик, PATH и GS_LIB ему не требуются. Путь DLL и
+ресурсов строится относительно EXE, поэтому ярлык может иметь другую рабочую папку.
+CMake копирует runtime и в обычный каталог сборки; путь источника комплекта
+при необходимости задаётся `BIC_GHOSTSCRIPT_ROOT`.
+Существующие команды Word/Excel сохраняют отдельную зависимость от Office.
+
+Ghostscript не устанавливался: официальный пакет распакован без запуска его
+установщика. Сборка, формирование portable, загрузка DLL, API и работа на чистой
+машине в этой задаче не проверялись по D-018.
