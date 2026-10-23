@@ -48,26 +48,25 @@ void SingleInstance::ActivateExistingWindow(const wchar_t* window_class_name)
         {
             break;
         }
-        existing_window = nullptr;
+        // existing_window = nullptr;
         Sleep(50);
     }
 
     if (existing_window != nullptr)
     {
-        // Восстанавливаем свёрнутое окно, сохраняя размер остальных окон.
-        ShowWindowAsync(existing_window,
-            IsIconic(existing_window) ? SW_RESTORE : SW_SHOW);
+// Восстанавливаем свёрнутое окно, сохраняя размер остальных окон.
+ShowWindowAsync(existing_window, IsIconic(existing_window) ? SW_RESTORE : SW_SHOW);
 
         // Windows может ограничить перевод чужого окна на передний план.
         // Если активация запрещена, привлекаем внимание через панель задач.
         if (!SetForegroundWindow(existing_window))
         {
-            FLASHWINFO flash_info{
-                .cbSize = sizeof(FLASHWINFO),
-                .hwnd = existing_window,
-                .dwFlags = FLASHW_TRAY,
-                .uCount = 3,
-                .dwTimeout = 0,
+        FLASHWINFO flash_info{
+            .cbSize = sizeof(FLASHWINFO),
+            .hwnd = existing_window,
+            .dwFlags = FLASHW_TRAY,
+            .uCount = 3,
+            .dwTimeout = 0,
             };
             FlashWindowEx(&flash_info);
         }
