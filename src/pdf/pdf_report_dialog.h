@@ -2,24 +2,13 @@
 
 #include <windows.h>
 
-#include <atomic>
-#include <string>
+#include "pdf_file_info.h"
+
+#include <vector>
 
 namespace PdfReportDialog
 {
-// Окно читает error/report только после done.load(acquire); рабочий поток
-// публикует их через done.store(release). Все ссылки и дескриптор должны жить
-// до возврата Show. Отмена запрашивается без ожидания завершения потока.
-struct State
-{
-    const std::atomic_bool& done;
-    std::atomic_bool& cancel;
-    const DWORD& error;
-    const std::wstring& report;
-    HANDLE worker_thread;
-};
-
-// Показывает модальный отчёт с ожиданием данных; при закрытии запрашивает
-// отмену незавершённой операции. Ошибку создания окна сообщает пользователю.
-void Show(HWND owner, HINSTANCE instance, const State& state) noexcept;
+// Показывает один PDF за раз после завершения всего рабочего задания.
+// Вызывающий код сохраняет готовый вектор до закрытия модального окна.
+void Show(HWND owner, HINSTANCE instance, const std::vector<Pdf::FileInfo>& files) noexcept;
 }

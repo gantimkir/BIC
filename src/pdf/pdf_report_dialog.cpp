@@ -6,13 +6,10 @@
 
 namespace
 {
-constexpr UINT_PTR kMetadataTimer = 1;
-constexpr ULONGLONG kMetadataTimeoutMs = 30000;
-
 struct DialogContext
 {
-    const PdfReportDialog::State& state;
-    ULONGLONG started = GetTickCount64();
+    const std::vector<Pdf::FileInfo>& files;
+    size_t current_index = 0;
 };
 
 void ShowError(HWND owner, const wchar_t* action, DWORD error) noexcept
@@ -22,15 +19,28 @@ void ShowError(HWND owner, const wchar_t* action, DWORD error) noexcept
     MessageBoxW(owner, message, L"PDF", MB_OK | MB_ICONERROR);
 }
 
-void Cancel(const DialogContext* context) noexcept
+// Переключение использует только готовые строки после завершения worker.
+// На границах списка и при одном файле соответствующие кнопки недоступны.
+bool ShowCurrentFile(HWND dialog, DialogContext* context) noexcept
 {
-    if (context != nullptr && !context->state.done.load(std::memory_order_acquire))
+    const auto& files = context->files;
+    if (context->current_index >= files.size())
     {
-        context->state.cancel.store(true);
-        // CancelSynchronousIo лишь запрашивает отмену текущего ввода-вывода.
-        // Владелец данных сохраняет их до завершения рабочего потока.
-        CancelSynchronousIo(context->state.worker_thread);
+        return false;
     }
+    wchar_t position[64]{};
+    swprintf_s(position, L"Файл %zu из %zu", context->current_index + 1, files.size());
+    if (!SetDlgItemTextW(dialog, IDC_PDF_POSITION, position) ||
+        !SetDlgItemTextW(dialog, IDC_PDF_DETAILS_TEXT,
+            files[context->current_index].display_text.c_str()))
+    {
+        ShowError(dialog, L"Не удалось показать сведения о PDF.", GetLastError());
+        EndDialog(dialog, IDCANCEL);
+        return false;
+    }
+    EnableWindow(GetDlgItem(dialog, IDC_PDF_PREVIOUS), context->current_index > 0);
+    EnableWindow(GetDlgItem(dialog, IDC_PDF_NEXT), context->current_index + 1 < files.size());
+    return true;
 }
 
 INT_PTR CALLBACK DialogProcedure(HWND dialog, UINT message, WPARAM w_param, LPARAM l_param) noexcept
@@ -40,70 +50,47 @@ INT_PTR CALLBACK DialogProcedure(HWND dialog, UINT message, WPARAM w_param, LPAR
     {
         context = reinterpret_cast<DialogContext*>(l_param);
         SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(context));
-        SetDlgItemTextW(dialog, IDC_FILE_SIZES_TEXT, L"Получение размеров и числа страниц PDF…");
-        EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
-        if (SetTimer(dialog, kMetadataTimer, 100, nullptr) == 0)
+        // В старом app.rc.res есть поле текста, но нет счётчика и навигации.
+        // Сообщаем о несовпадении сразу, чтобы не выдавать код 1421 после чтения PDF.
+        if (GetDlgItem(dialog, IDC_PDF_POSITION) == nullptr ||
+            GetDlgItem(dialog, IDC_PDF_DETAILS_TEXT) == nullptr ||
+            GetDlgItem(dialog, IDC_PDF_PREVIOUS) == nullptr ||
+            GetDlgItem(dialog, IDC_PDF_NEXT) == nullptr)
         {
-            const DWORD error = GetLastError();
-            Cancel(context);
-            ShowError(dialog, L"Не удалось включить ожидание результата.", error);
+            ShowError(dialog, L"Ресурс окна PDF устарел. Пересоберите BIC.",
+                ERROR_CONTROL_ID_NOT_FOUND);
             EndDialog(dialog, IDCANCEL);
             return TRUE;
         }
+        // Окно создаётся только после успешного завершения worker: первый
+        // файл можно показывать сразу, без таймера и промежуточного текста.
+        if (!ShowCurrentFile(dialog, context)) { return TRUE; }
         SetFocus(GetDlgItem(dialog, IDCANCEL));
         return FALSE;
     }
-    if (message == WM_TIMER && w_param == kMetadataTimer && context != nullptr)
+    if (message == WM_COMMAND && context != nullptr &&
+        (LOWORD(w_param) == IDC_PDF_PREVIOUS || LOWORD(w_param) == IDC_PDF_NEXT))
     {
-        const bool done = context->state.done.load(std::memory_order_acquire);
-        if (done || GetTickCount64() - context->started >= kMetadataTimeoutMs)
+        if (LOWORD(w_param) == IDC_PDF_PREVIOUS && context->current_index > 0)
         {
-            KillTimer(dialog, kMetadataTimer);
-            const wchar_t* text = nullptr;
-            if (!done)
-            {
-                Cancel(context);
-                text = L"Время ожидания превысило 30 секунд. Операция отменена.";
-            }
-            else if (context->state.error == ERROR_NOT_ENOUGH_MEMORY)
-            {
-                text = L"Недостаточно памяти для списка файлов. Выберите меньше файлов.";
-            }
-            else if (context->state.error == ERROR_NETWORK_ACCESS_DENIED)
-            {
-                text = L"Выберите файлы из одной локальной папки. Сетевые расположения не принимаются.";
-            }
-            else if (context->state.error != ERROR_SUCCESS)
-            {
-                text = L"Получение сведений о PDF отменено или список превышает допустимый объём.";
-            }
-            else
-            {
-                text = context->state.report.c_str();
-            }
-            if (!SetDlgItemTextW(dialog, IDC_FILE_SIZES_TEXT, text))
-            {
-                ShowError(dialog, L"Не удалось показать список файлов.", GetLastError());
-                EndDialog(dialog, IDCANCEL);
-                return TRUE;
-            }
-            EnableWindow(GetDlgItem(dialog, IDOK), TRUE);
-            ShowWindow(GetDlgItem(dialog, IDCANCEL), SW_HIDE);
-            SetFocus(GetDlgItem(dialog, IDOK));
+            --context->current_index;
         }
+        else if (LOWORD(w_param) == IDC_PDF_NEXT &&
+            context->current_index + 1 < context->files.size())
+        {
+            ++context->current_index;
+        }
+        ShowCurrentFile(dialog, context);
         return TRUE;
     }
     if ((message == WM_COMMAND && (LOWORD(w_param) == IDOK || LOWORD(w_param) == IDCANCEL)) ||
         message == WM_CLOSE)
     {
-        Cancel(context);
         EndDialog(dialog, message == WM_CLOSE ? IDCANCEL : LOWORD(w_param));
         return TRUE;
     }
     if (message == WM_DESTROY)
     {
-        KillTimer(dialog, kMetadataTimer);
-        Cancel(context);
         SetWindowLongPtrW(dialog, DWLP_USER, 0);
         return TRUE;
     }
@@ -111,13 +98,13 @@ INT_PTR CALLBACK DialogProcedure(HWND dialog, UINT message, WPARAM w_param, LPAR
 }
 } // namespace
 
-void PdfReportDialog::Show(HWND owner, HINSTANCE instance, const State& state) noexcept
+void PdfReportDialog::Show(HWND owner, HINSTANCE instance,
+    const std::vector<Pdf::FileInfo>& files) noexcept
 {
-    DialogContext context{state};
-    const INT_PTR result = DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_FILE_SIZES), owner,
+    DialogContext context{files};
+    const INT_PTR result = DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_PDF_DETAILS), owner,
         DialogProcedure, reinterpret_cast<LPARAM>(&context));
     const DWORD dialog_error = result == -1 ? GetLastError() : ERROR_SUCCESS;
-    Cancel(&context);
     if (result == -1)
     {
         ShowError(owner, L"Не удалось показать сведения о PDF.", dialog_error);

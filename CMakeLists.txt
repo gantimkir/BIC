@@ -32,6 +32,9 @@ add_executable(BIC WIN32
     src/pdf/file_drop_area.h
     src/pdf/pdf_report_dialog.cpp
     src/pdf/pdf_report_dialog.h
+    src/pdf/pdf_progress_dialog.cpp
+    src/pdf/pdf_progress_dialog.h
+    src/pdf/pdf_file_info.h
     src/pdf/pdf_panel.cpp
     src/pdf/pdf_panel.h
     src/office_document.cpp
@@ -51,6 +54,11 @@ add_executable(BIC WIN32
 )
 # Диалог включён в общий app.rc; отдельная компиляция дала бы дубли ID ресурсов.
 set_source_files_properties(src/pdf/file_report.rc PROPERTIES HEADER_FILE_ONLY TRUE)
+# На текущем генераторе RC-включения не сканируются для Ninja. Явные зависимости
+# пересобирают app.rc.res при изменении разметки или ID внутри src/pdf.
+set_property(SOURCE src/app.rc APPEND PROPERTY OBJECT_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/file_report.rc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/resource.h")
 target_include_directories(BIC PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 target_link_libraries(BIC PRIVATE shell32 ole32 oleaut32 uuid)
 target_compile_features(BIC PRIVATE cxx_std_20)

@@ -1,6 +1,8 @@
 #include "file_drop_area.h"
 
 #include "ghostscript_engine.h"
+#include "pdf_file_info.h"
+#include "pdf_progress_dialog.h"
 #include "pdf_report_dialog.h"
 
 #include <ole2.h>
@@ -54,7 +56,7 @@ private:
 constexpr size_t kMaxFiles = 1024;
 constexpr size_t kMaxPathChars = 32760;
 constexpr size_t kMaxTotalPathChars = 262144;
-constexpr size_t kMaxReportChars = 524288;
+constexpr size_t kMaxDisplayChars = 524288;
 constexpr SIZE_T kMaxDropBytes = 4 * 1024 * 1024;
 std::atomic<bool> metadata_worker_active{false};
 
@@ -276,14 +278,48 @@ DWORD CheckResolvedLocal(HANDLE handle)
 
 struct MetadataJob
 {
-    std::vector<std::wstring> paths;
+    std::vector<Pdf::FileInfo> files;
     std::wstring folder;
-    std::wstring report;
     DWORD error = ERROR_SUCCESS;
     std::atomic<bool> cancel{false};
     std::atomic<bool> done{false};
-    // report/error пишет только worker. UI читает их лишь после done.load(acquire).
+    std::atomic<size_t> processed{0};
+    // UI читает число завершённых файлов сразу, а files/error — только после done(acquire).
 };
+
+// Представление одного результата создаётся в рабочем потоке. Числовые поля
+// остаются отдельными для будущих команд обработки текущего PDF в окне.
+std::wstring FormatFileInfo(const Pdf::FileInfo& file)
+{
+    std::wstring text = L"Имя: " + file.path.substr(file.path.rfind(L'\\') + 1) +
+        L"\r\nПуть: " + file.path + L"\r\nРазмер: ";
+    if (file.is_directory)
+    {
+        text += L"каталог, а не файл";
+    }
+    else if (file.size_bytes)
+    {
+        text += std::to_wstring(*file.size_bytes) + L" байт";
+    }
+    else
+    {
+        text += L"недоступен (код " + std::to_wstring(file.file_error) + L")";
+    }
+    text += L"\r\nСтраниц: ";
+    if (file.page_count)
+    {
+        text += std::to_wstring(*file.page_count);
+    }
+    else if (file.size_bytes)
+    {
+        text += L"недоступно (код " + std::to_wstring(file.page_error) + L")";
+    }
+    else
+    {
+        text += L"не определено";
+    }
+    return text;
+}
 
 unsigned __stdcall MetadataWorker(void* parameter) noexcept
 {
@@ -302,21 +338,20 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
             OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
         job->error = folder.get() == INVALID_HANDLE_VALUE ? GetLastError()
             : CheckResolvedLocal(folder.get());
-        std::uint64_t total_pages = 0;
-        size_t counted_files = 0;
-        for (const auto& path : job->paths)
+        size_t display_chars = 0;
+        for (auto& file_info : job->files)
         {
             if (job->error != ERROR_SUCCESS || job->cancel.load())
             {
                 if (job->error == ERROR_SUCCESS) { job->error = ERROR_CANCELLED; }
                 break;
             }
-            // Общую папку выводим отдельно в последней строке отчёта.
-            std::wstring line = path.substr(path.rfind(L'\\') + 1) + L": ";
+            const std::wstring& path = file_info.path;
             const std::wstring api_path = MetadataPath(path);
             // Без OPEN_REPARSE_POINT открывается целевой файл символьной ссылки.
-            // Читаем только метаданные, не содержимое; совместный доступ не блокирует
-            // редактирование/удаление другими программами. Дескриптор закрывается RAII.
+            // Этот дескриптор читает только метаданные; содержимое позже отдельно
+            // открывает Ghostscript. Совместный доступ не блокирует другие программы.
+            // Дескриптор закрывается RAII.
             const UniqueHandle file(CreateFileW(api_path.c_str(), FILE_READ_ATTRIBUTES,
                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                 OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
@@ -353,7 +388,7 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                     }
                     else if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
                     {
-                        line += L"каталог, а не файл";
+                        file_info.is_directory = true;
                     }
                     else if (!GetFileSizeEx(file.get(), &size))
                     {
@@ -361,75 +396,53 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                     }
                     else
                     {
-                        line += std::to_wstring(size.QuadPart) + L" байт";
+                        file_info.size_bytes = static_cast<std::uint64_t>(size.QuadPart);
                         // Только существующий обычный файл передаётся движку.
                         // Ghostscript открывает PDF заново: размер остаётся
                         // доступным в отчёте даже при ошибке разбора PDF.
                         int page_count = 0;
-                        const DWORD page_error = ReadPdfPageCount(path, job->cancel, page_count);
+                        file_info.page_error = ReadPdfPageCount(path, job->cancel, page_count);
                         if (job->cancel.load())
                         {
                             job->error = ERROR_CANCELLED;
                             break;
                         }
-                        line += page_error == ERROR_SUCCESS
-                            ? L", страниц: " + std::to_wstring(page_count)
-                            : L", страниц недоступно (код " +
-                                std::to_wstring(page_error) + L")";
-                        if (page_error == ERROR_SUCCESS)
+                        if (file_info.page_error == ERROR_SUCCESS)
                         {
-                            total_pages += static_cast<std::uint64_t>(page_count);
-                            ++counted_files;
+                            file_info.page_count = page_count;
                         }
                     }
                 }
             }
-            if (file_error != ERROR_SUCCESS)
-            {
-                line += L"размер недоступен (код " + std::to_wstring(file_error) + L")";
-            }
-            line += L"\r\n";
-            if (line.size() > kMaxReportChars - job->report.size())
+            file_info.file_error = file_error;
+            file_info.display_text = FormatFileInfo(file_info);
+            if (file_info.display_text.size() > kMaxDisplayChars - display_chars)
             {
                 job->error = ERROR_BUFFER_OVERFLOW;
                 break;
             }
-            job->report += line;
-        }
-        if (job->error == ERROR_SUCCESS)
-        {
-            // Сумма относится только к файлам с успешно полученным числом
-            // страниц; при частичном успехе это явно указано в отчёте.
-            const std::wstring footer = L"Всего страниц: " +
-                std::to_wstring(total_pages) + L" (для " +
-                std::to_wstring(counted_files) + L" из " +
-                std::to_wstring(job->paths.size()) + L" PDF)\r\nПапка: " + job->folder;
-            if (footer.size() > kMaxReportChars - job->report.size())
-            {
-                job->error = ERROR_BUFFER_OVERFLOW;
-            }
-            else
-            {
-                job->report += footer;
-            }
+            display_chars += file_info.display_text.size();
+            // Счётчик публикуется после заполнения записи. UI использует только
+            // число: содержимое вектора до общего завершения ему недоступно.
+            job->processed.fetch_add(1, std::memory_order_release);
         }
     }
     catch (const std::bad_alloc&)
     {
         job->error = ERROR_NOT_ENOUGH_MEMORY;
-        job->report.clear();
+        job->files.clear();
     }
     catch (...)
     {
         job->error = ERROR_INVALID_DATA;
-        job->report.clear();
+        job->files.clear();
     }
     job->done.store(true, std::memory_order_release);
     metadata_worker_active.store(false);
     return 0;
 }
 
-void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
+void ShowPdfDetails(HWND owner, std::vector<std::wstring> paths)
 {
     if (paths.empty())
     {
@@ -465,8 +478,16 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
         }
     } slot;
     const auto job = std::make_shared<MetadataJob>();
-    job->paths = std::move(paths);
     job->folder = folder;
+    // Сохраняем отдельную запись для каждого выбранного файла в исходном порядке.
+    // После запуска потока вектор не меняет размер; GUI читает его после done.
+    job->files.reserve(paths.size());
+    for (auto& path : paths)
+    {
+        Pdf::FileInfo file;
+        file.path = std::move(path);
+        job->files.push_back(std::move(file));
+    }
     auto argument = std::make_unique<std::shared_ptr<MetadataJob>>(job);
     const uintptr_t thread = _beginthreadex(nullptr, 0, MetadataWorker, argument.get(), 0, nullptr);
     if (thread == 0)
@@ -480,10 +501,16 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     // закрывается, без принудительного завершения рабочего потока.
     const UniqueHandle worker_thread(reinterpret_cast<HANDLE>(thread));
     slot.worker_started = true;
-    const PdfReportDialog::State dialog_state{
-        job->done, job->cancel, job->error, job->report, worker_thread.get()};
     const auto instance = reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(owner, GWLP_HINSTANCE));
-    PdfReportDialog::Show(owner, instance, dialog_state);
+    const PdfProgressDialog::State progress_state{
+        job->done, job->processed, job->cancel, job->error,
+        job->files.size(), worker_thread.get()};
+    // Отчёт открывается только после успешного окончания всего набора. Отмена
+    // в окне загрузки оставляет частичные записи внутри job и не показывает их.
+    if (PdfProgressDialog::Show(owner, instance, progress_state))
+    {
+        PdfReportDialog::Show(owner, instance, job->files);
+    }
 }
 
 // Предупреждение выводится до запуска получения размеров. Объект цели OLE
@@ -496,7 +523,7 @@ void ShowDropSelection(HWND owner, DropSelection selection)
     }
     if (!selection.paths.empty() && IsWindow(owner) && IsWindowEnabled(owner))
     {
-        ShowFileSizes(owner, std::move(selection.paths));
+        ShowPdfDetails(owner, std::move(selection.paths));
     }
 }
 
@@ -588,7 +615,7 @@ void ChooseFiles(HWND owner)
         ShowError(owner, L"Не удалось выбрать файлы.", static_cast<unsigned long>(result));
         return;
     }
-    ShowFileSizes(owner, std::move(paths));
+    ShowPdfDetails(owner, std::move(paths));
 }
 
 // Проверяем границы DROPFILES и двойной терминатор до вызовов Shell над внешним

@@ -1,12 +1,25 @@
-// Системный модальный диалог: прокрутка сохраняет доступ к длинному списку PDF.
+// Системный модальный диалог: один выбранный PDF и навигация по набору.
 // Файл включается из src/app.rc, поэтому не компилируется как отдельный ресурс.
-IDD_FILE_SIZES DIALOGEX 0, 0, 340, 220
+IDD_PDF_DETAILS DIALOGEX 0, 0, 340, 220
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Сведения о PDF"
 FONT 9, "Segoe UI"
 BEGIN
-    EDITTEXT IDC_FILE_SIZES_TEXT, 8, 8, 324, 180,
+    LTEXT "Подготовка сведений…", IDC_PDF_POSITION, 8, 8, 324, 13
+    EDITTEXT IDC_PDF_DETAILS_TEXT, 8, 25, 324, 158,
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL | WS_BORDER | WS_TABSTOP
-    DEFPUSHBUTTON "OK", IDOK, 228, 194, 50, 18
-    PUSHBUTTON "Отмена", IDCANCEL, 282, 194, 50, 18
+    PUSHBUTTON "Назад", IDC_PDF_PREVIOUS, 8, 194, 60, 18
+    PUSHBUTTON "Вперёд", IDC_PDF_NEXT, 74, 194, 60, 18
+    DEFPUSHBUTTON "Закрыть", IDCANCEL, 282, 194, 50, 18
+END
+
+// Во время чтения большого набора показываем отдельное модальное окно.
+// Счётчик обновляется UI-потоком; рабочий поток не обращается к HWND.
+IDD_PDF_PROGRESS DIALOGEX 0, 0, 260, 78
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Загрузка PDF"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Обработано PDF: 0 из 0", IDC_PDF_PROGRESS_TEXT, 10, 12, 240, 16
+    DEFPUSHBUTTON "Отмена", IDCANCEL, 194, 48, 56, 18
 END
