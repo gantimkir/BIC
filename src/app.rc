@@ -5,14 +5,5 @@
 
 IDI_BIC ICON "volleyball.ico"
 
-// Системный модальный диалог: прокрутка сохраняет доступ к длинному списку файлов.
-IDD_FILE_SIZES DIALOGEX 0, 0, 340, 220
-STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Размеры файлов"
-FONT 9, "Segoe UI"
-BEGIN
-    EDITTEXT IDC_FILE_SIZES_TEXT, 8, 8, 324, 180,
-        ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL | WS_BORDER | WS_TABSTOP
-    DEFPUSHBUTTON "OK", IDOK, 228, 194, 50, 18
-    PUSHBUTTON "Отмена", IDCANCEL, 282, 194, 50, 18
-END
+// PDF-диалог хранится рядом с кодом обработки PDF и включается в один ресурсный модуль.
+#include "pdf/file_report.rc"
