@@ -1,6 +1,7 @@
 #include "file_drop_area.h"
 
-#include "resource.h"
+#include "ghostscript_engine.h"
+#include "pdf_report_dialog.h"
 
 #include <ole2.h>
 #include <shellapi.h>
@@ -9,6 +10,8 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <charconv>
+#include <cstdint>
 #include <cwchar>
 #include <memory>
 #include <process.h>
@@ -53,8 +56,6 @@ constexpr size_t kMaxPathChars = 32760;
 constexpr size_t kMaxTotalPathChars = 262144;
 constexpr size_t kMaxReportChars = 524288;
 constexpr SIZE_T kMaxDropBytes = 4 * 1024 * 1024;
-constexpr UINT_PTR kMetadataTimer = 1;
-constexpr ULONGLONG kMetadataTimeoutMs = 30000;
 std::atomic<bool> metadata_worker_active{false};
 
 struct SelectionRejected
@@ -189,6 +190,64 @@ std::wstring MetadataPath(const std::wstring& path)
     return path.starts_with(L"\\\\?\\") ? path : L"\\\\?\\" + path;
 }
 
+// Возвращает число страниц только при успешном разборе PDF. Путь передаётся
+// отдельным параметром Ghostscript, а не вставляется в PostScript-код: скобки
+// и другие символы имени файла не могут изменить исполняемую программу.
+// При ошибке вызывающий код сохраняет полученный размер и показывает причину отдельно.
+DWORD ReadPdfPageCount(const std::wstring& path, const std::atomic_bool& cancel,
+    int& page_count)
+{
+    // В Ghostscript список разрешённых путей разделяется точкой с запятой даже
+    // в Windows. Такое имя нельзя передать как одно разрешение без расширения
+    // доступа на другие пути, поэтому размер покажем, а число страниц — нет.
+    if (path.find(L';') != std::wstring::npos)
+    {
+        return ERROR_INVALID_NAME;
+    }
+    const Ghostscript::RunOptions options{
+        .arguments = {
+            L"-dQUIET", L"-dNODISPLAY", L"-dPDFSTOPONERROR",
+            L"--permit-file-read=" + path,
+            L"-sBICPDF=" + path,
+            L"-c",
+            L"BICPDF (r) file runpdfbegin pdfpagecount "
+                L"(BIC_PAGE_COUNT:) print = flush quit",
+        },
+        .cancel = &cancel,
+    };
+    const Ghostscript::Result result = Ghostscript::Run(options);
+    if (!result || result.diagnostics_truncated)
+    {
+        return result ? ERROR_BUFFER_OVERFLOW : static_cast<DWORD>(result.status);
+    }
+
+    // stdout и stderr объединены в журнале движка. Ищем только помеченный
+    // результат своей команды; баннер и диагностические строки числом не считаем.
+    constexpr std::string_view marker = "BIC_PAGE_COUNT:";
+    const std::string_view output = result.diagnostics;
+    const size_t begin = output.rfind(marker);
+    if (begin == std::string_view::npos)
+    {
+        return ERROR_INVALID_DATA;
+    }
+    const size_t digits_begin = begin + marker.size();
+    const size_t digits_end = output.find_first_not_of("0123456789", digits_begin);
+    if (digits_end == digits_begin)
+    {
+        return ERROR_INVALID_DATA;
+    }
+    const size_t end = digits_end == std::string_view::npos ? output.size() : digits_end;
+    int count = 0;
+    const auto parsed = std::from_chars(output.data() + digits_begin,
+        output.data() + end, count);
+    if (parsed.ec != std::errc{} || count <= 0)
+    {
+        return ERROR_INVALID_DATA;
+    }
+    page_count = count;
+    return ERROR_SUCCESS;
+}
+
 // Проверяем и конечную цель ссылки, чтобы локальный путь не скрывал UNC.
 DWORD CheckResolvedLocal(HANDLE handle)
 {
@@ -243,6 +302,8 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
             OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
         job->error = folder.get() == INVALID_HANDLE_VALUE ? GetLastError()
             : CheckResolvedLocal(folder.get());
+        std::uint64_t total_pages = 0;
+        size_t counted_files = 0;
         for (const auto& path : job->paths)
         {
             if (job->error != ERROR_SUCCESS || job->cancel.load())
@@ -301,6 +362,25 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                     else
                     {
                         line += std::to_wstring(size.QuadPart) + L" байт";
+                        // Только существующий обычный файл передаётся движку.
+                        // Ghostscript открывает PDF заново: размер остаётся
+                        // доступным в отчёте даже при ошибке разбора PDF.
+                        int page_count = 0;
+                        const DWORD page_error = ReadPdfPageCount(path, job->cancel, page_count);
+                        if (job->cancel.load())
+                        {
+                            job->error = ERROR_CANCELLED;
+                            break;
+                        }
+                        line += page_error == ERROR_SUCCESS
+                            ? L", страниц: " + std::to_wstring(page_count)
+                            : L", страниц недоступно (код " +
+                                std::to_wstring(page_error) + L")";
+                        if (page_error == ERROR_SUCCESS)
+                        {
+                            total_pages += static_cast<std::uint64_t>(page_count);
+                            ++counted_files;
+                        }
                     }
                 }
             }
@@ -318,8 +398,12 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
         }
         if (job->error == ERROR_SUCCESS)
         {
-            // Путь общей папки занимает последнюю строку списка.
-            const std::wstring footer = L"Папка: " + job->folder;
+            // Сумма относится только к файлам с успешно полученным числом
+            // страниц; при частичном успехе это явно указано в отчёте.
+            const std::wstring footer = L"Всего страниц: " +
+                std::to_wstring(total_pages) + L" (для " +
+                std::to_wstring(counted_files) + L" из " +
+                std::to_wstring(job->paths.size()) + L" PDF)\r\nПапка: " + job->folder;
             if (footer.size() > kMaxReportChars - job->report.size())
             {
                 job->error = ERROR_BUFFER_OVERFLOW;
@@ -343,102 +427,6 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
     job->done.store(true, std::memory_order_release);
     metadata_worker_active.store(false);
     return 0;
-}
-
-struct MetadataDialogContext
-{
-    std::shared_ptr<MetadataJob> job;
-    // До запуска worker дескриптора нет; затем им владеет контекст диалога.
-    UniqueHandle thread{nullptr};
-    ULONGLONG started = GetTickCount64();
-};
-
-void CancelMetadata(MetadataDialogContext* context) noexcept
-{
-    if (context != nullptr && !context->job->done.load(std::memory_order_acquire))
-    {
-        context->job->cancel.store(true);
-        // API лишь запрашивает отмену и не ждёт окончания. Если драйвер её задержит,
-        // worker сохраняет свою ссылку на job; новый worker не запускается до завершения.
-        CancelSynchronousIo(context->thread.get());
-    }
-}
-
-INT_PTR CALLBACK SizesDialogProcedure(HWND dialog, UINT message, WPARAM w_param, LPARAM l_param) noexcept
-{
-    auto* context = reinterpret_cast<MetadataDialogContext*>(GetWindowLongPtrW(dialog, DWLP_USER));
-    if (message == WM_INITDIALOG)
-    {
-        context = reinterpret_cast<MetadataDialogContext*>(l_param);
-        SetWindowLongPtrW(dialog, DWLP_USER, reinterpret_cast<LONG_PTR>(context));
-        SetDlgItemTextW(dialog, IDC_FILE_SIZES_TEXT, L"Получение размеров файлов…");
-        EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
-        if (SetTimer(dialog, kMetadataTimer, 100, nullptr) == 0)
-        {
-            const DWORD error = GetLastError();
-            CancelMetadata(context);
-            ShowError(dialog, L"Не удалось включить ожидание результата.", error);
-            EndDialog(dialog, IDCANCEL);
-            return TRUE;
-        }
-        SetFocus(GetDlgItem(dialog, IDCANCEL));
-        return FALSE;
-    }
-    if (message == WM_TIMER && w_param == kMetadataTimer && context != nullptr)
-    {
-        const bool done = context->job->done.load(std::memory_order_acquire);
-        if (done || GetTickCount64() - context->started >= kMetadataTimeoutMs)
-        {
-            KillTimer(dialog, kMetadataTimer);
-            const wchar_t* text = nullptr;
-            if (!done)
-            {
-                CancelMetadata(context);
-                text = L"Время ожидания превысило 30 секунд. Операция отменена.";
-            }
-            else if (context->job->error == ERROR_NOT_ENOUGH_MEMORY)
-            {
-                text = L"Недостаточно памяти для списка файлов. Выберите меньше файлов.";
-            }
-            else if (context->job->error == ERROR_NETWORK_ACCESS_DENIED)
-            {
-                text = L"Выберите файлы из одной локальной папки. Сетевые расположения не принимаются.";
-            }
-            else if (context->job->error != ERROR_SUCCESS)
-            {
-                text = L"Получение размеров отменено или список превышает допустимый объём.";
-            }
-            else
-            {
-                text = context->job->report.c_str();
-            }
-            if (!SetDlgItemTextW(dialog, IDC_FILE_SIZES_TEXT, text))
-            {
-                ShowError(dialog, L"Не удалось показать список файлов.", GetLastError());
-                EndDialog(dialog, IDCANCEL);
-                return TRUE;
-            }
-            EnableWindow(GetDlgItem(dialog, IDOK), TRUE);
-            ShowWindow(GetDlgItem(dialog, IDCANCEL), SW_HIDE);
-            SetFocus(GetDlgItem(dialog, IDOK));
-        }
-        return TRUE;
-    }
-    if ((message == WM_COMMAND && (LOWORD(w_param) == IDOK || LOWORD(w_param) == IDCANCEL)) ||
-        message == WM_CLOSE)
-    {
-        CancelMetadata(context);
-        EndDialog(dialog, message == WM_CLOSE ? IDCANCEL : LOWORD(w_param));
-        return TRUE;
-    }
-    if (message == WM_DESTROY)
-    {
-        KillTimer(dialog, kMetadataTimer);
-        CancelMetadata(context);
-        SetWindowLongPtrW(dialog, DWLP_USER, 0);
-        return TRUE;
-    }
-    return FALSE;
 }
 
 void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
@@ -480,27 +468,22 @@ void ShowFileSizes(HWND owner, std::vector<std::wstring> paths)
     job->paths = std::move(paths);
     job->folder = folder;
     auto argument = std::make_unique<std::shared_ptr<MetadataJob>>(job);
-    MetadataDialogContext context{job};
     const uintptr_t thread = _beginthreadex(nullptr, 0, MetadataWorker, argument.get(), 0, nullptr);
     if (thread == 0)
     {
-        ShowError(owner, L"Не удалось запустить получение размеров.", ERROR_NOT_ENOUGH_MEMORY);
+        ShowError(owner, L"Не удалось запустить получение сведений о PDF.", ERROR_NOT_ENOUGH_MEMORY);
         return;
     }
     argument.release(); // С этого момента памятью аргумента владеет worker.
-    context.thread.reset(reinterpret_cast<HANDLE>(thread));
+    // Дескриптор нужен окну для запроса отмены, но рабочий поток владеет job
+    // независимо от срока жизни окна. После закрытия модального окна HANDLE
+    // закрывается, без принудительного завершения рабочего потока.
+    const UniqueHandle worker_thread(reinterpret_cast<HANDLE>(thread));
     slot.worker_started = true;
-    // Модальный цикл обслуживает сообщения, а UI не ждёт ни метаданных, ни thread join.
-    // После отмены/ошибки диалога закрываем только HANDLE, не завершаем поток принудительно.
+    const PdfReportDialog::State dialog_state{
+        job->done, job->cancel, job->error, job->report, worker_thread.get()};
     const auto instance = reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(owner, GWLP_HINSTANCE));
-    const INT_PTR result = DialogBoxParamW(instance, MAKEINTRESOURCEW(IDD_FILE_SIZES), owner,
-        SizesDialogProcedure, reinterpret_cast<LPARAM>(&context));
-    const DWORD dialog_error = result == -1 ? GetLastError() : ERROR_SUCCESS;
-    CancelMetadata(&context);
-    if (result == -1)
-    {
-        ShowError(owner, L"Не удалось показать размеры файлов.", dialog_error);
-    }
+    PdfReportDialog::Show(owner, instance, dialog_state);
 }
 
 // Предупреждение выводится до запуска получения размеров. Объект цели OLE

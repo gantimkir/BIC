@@ -28,12 +28,16 @@ add_executable(BIC WIN32
     src/pzz_61_48_graphics.h
     src/pzz_61_41_graphics.cpp
     src/pzz_61_41_graphics.h
-    src/file_drop_area.cpp
-    src/file_drop_area.h
+    src/pdf/file_drop_area.cpp
+    src/pdf/file_drop_area.h
+    src/pdf/pdf_report_dialog.cpp
+    src/pdf/pdf_report_dialog.h
+    src/pdf/pdf_panel.cpp
+    src/pdf/pdf_panel.h
     src/office_document.cpp
     src/office_document.h
-    src/ghostscript_engine.cpp
-    src/ghostscript_engine.h
+    src/pdf/ghostscript_engine.cpp
+    src/pdf/ghostscript_engine.h
     src/window_hotkeys.cpp
     src/window_hotkeys.h
     src/single_instance.cpp
@@ -42,7 +46,11 @@ add_executable(BIC WIN32
     src/tray_icon.h
     src/app.rc
     src/resource.h
+    src/pdf/file_report.rc
+    src/pdf/resource.h
 )
+# Диалог включён в общий app.rc; отдельная компиляция дала бы дубли ID ресурсов.
+set_source_files_properties(src/pdf/file_report.rc PROPERTIES HEADER_FILE_ONLY TRUE)
 target_include_directories(BIC PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 target_link_libraries(BIC PRIVATE shell32 ole32 oleaut32 uuid)
 target_compile_features(BIC PRIVATE cxx_std_20)
@@ -74,11 +82,14 @@ if(BIC_REQUIRE_GHOSTSCRIPT)
     endif()
 endif()
 if(EXISTS "${BIC_GHOSTSCRIPT_ROOT}/bin/gsdll64.dll")
-    # Отдельная ALL-цель обновляет ресурсы даже без перелинковки BIC.exe.
+    # Цель вызывается при каждой сборке, но скрипт записывает только изменённые файлы.
+    # Так работающий процесс не мешает сборке, если загруженная DLL не менялась.
     add_custom_target(bic_ghostscript_runtime ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${BIC_GHOSTSCRIPT_ROOT}" "$<TARGET_FILE_DIR:BIC>/runtime/ghostscript"
-        COMMENT "Copying bundled Ghostscript runtime"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DBIC_GHOSTSCRIPT_SOURCE=${BIC_GHOSTSCRIPT_ROOT}"
+            "-DBIC_GHOSTSCRIPT_DESTINATION=$<TARGET_FILE_DIR:BIC>/runtime/ghostscript"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/copy_ghostscript_runtime.cmake"
+        COMMENT "Synchronizing bundled Ghostscript runtime"
         VERBATIM)
     add_dependencies(BIC bic_ghostscript_runtime)
     install(DIRECTORY "${BIC_GHOSTSCRIPT_ROOT}/" DESTINATION runtime/ghostscript)

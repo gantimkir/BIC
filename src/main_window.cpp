@@ -1,5 +1,4 @@
 #include "main_window.h"
-
 #include <cwchar>
 
 #include "tray_icon.h"
@@ -13,7 +12,7 @@
 #include "pzz_61_41_text.h"
 #include "pzz_61_48_graphics.h"
 #include "pzz_61_41_graphics.h"
-#include "file_drop_area.h"
+#include "pdf/pdf_panel.h"
 
 namespace
 {
@@ -27,8 +26,6 @@ constexpr int kPzz6148GraphicsButtonId = 7;
 constexpr int kPzz6141GraphicsButtonId = 8;
 constexpr int kPzz6148GroupId = 9;
 constexpr int kPzz6141GroupId = 10;
-constexpr int kFilesGroupId = 11;
-constexpr int kFileDropAreaId = 12;
 constexpr int kDasFlLetterheadButtonId = 13;
 constexpr int kDasUlLetterheadButtonId = 14;
 constexpr int kCompactButtonId = 15;
@@ -206,23 +203,11 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
         return -1;
     }
 
-    // Третья рамка повторяет размеры ПЗЗ, а цветная область занимает всю её
-    // внутреннюю ширину. Собственный класс области обрабатывает drop и выбор файлов.
-    constexpr int files_group_top = pzz_groups_top + 2 * (kPzzGroupHeight + kButtonSpacing);
-    HWND files_group = CreateWindowExW(
-        0, L"BUTTON", L"PDF",
-        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_GROUPBOX,
-        kButtonMargin, files_group_top, kRegistryButtonWidth, kPzzGroupHeight, window,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFilesGroupId)), instance, nullptr);
-    if (files_group == nullptr)
-    {
-        return -1;
-    }
-    SendMessageW(files_group, WM_SETFONT,
-        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-    if (FileDropArea::Create(window, instance, kFileDropAreaId,
-            kButtonMargin + kPzzGroupSideInset, files_group_top + kPzzGroupTopInset,
-            kRegistryButtonWidth - 2 * kPzzGroupSideInset, kButtonHeight) == nullptr)
+    // PDF-модуль создаёт собственную рамку и область выбора; главная форма
+    // задаёт только место панели под рамками ПЗЗ.
+    constexpr int pdf_top = pzz_groups_top + 2 * (kPzzGroupHeight + kButtonSpacing);
+    if (!PdfPanel::Create(window, instance, kButtonMargin, pdf_top,
+            kRegistryButtonWidth, kPzzGroupHeight))
     {
         return -1;
     }
