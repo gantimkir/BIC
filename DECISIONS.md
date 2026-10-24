@@ -2,7 +2,11 @@
 
 Вносить каждое новое принятое решение до итогового ответа. Даты - Europe/Moscow.
 Уже существовавшее поведение описано в `PROJECT_STATE.md`; записи ниже фиксируют
+<<<<<<< HEAD
 решения текущего этапа разработки. Следующий свободный ID: D-049.
+=======
+решения текущего этапа разработки. Следующий свободный ID: D-047.
+>>>>>>> 661c859c22645da3a3933d96b8047adfdcadf8a9
 
 ## D-001 | 2026-10-06 | Общий интерфейс открытия Office
 
@@ -819,6 +823,7 @@ src/resource.h, README.md, PROJECT_STATE.md, DECISIONS.md.
 перечисляет фактически изменённые места в итоговом ответе.
 Файлы: AGENTS.md, PROJECT_STATE.md, DECISIONS.md.
 
+<<<<<<< HEAD
 ## D-047 | 2026-10-24 | Размещение PDF-кода в src/pdf
 
 Статус: перенос исходников и ресурсов выполнен; пользовательская сборка выявила
@@ -871,3 +876,5 @@ CMakeLists.txt, AGENTS.md, README.md, PROJECT_STATE.md, DECISIONS.md.
 Файлы: CMakeLists.txt, src/pdf/copy_ghostscript_runtime.cmake, README.md,
 INSTALL.md, PROJECT_STATE.md, DECISIONS.md.
 
+=======
+>>>>>>> 661c859c22645da3a3933d96b8047adfdcadf8a9
