@@ -1,5 +1,4 @@
 #include "main_window.h"
-
 #include <cwchar>
 
 #include "tray_icon.h"
