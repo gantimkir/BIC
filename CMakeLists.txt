@@ -35,6 +35,10 @@ add_executable(BIC WIN32
     src/pdf/pdf_progress_dialog.cpp
     src/pdf/pdf_progress_dialog.h
     src/pdf/pdf_file_info.h
+    src/pdf/pdf_raster_analysis.cpp
+    src/pdf/pdf_raster_analysis.h
+    src/pdf/pdf_raster_job.cpp
+    src/pdf/pdf_raster_job.h
     src/pdf/pdf_panel.cpp
     src/pdf/pdf_panel.h
     src/office_document.cpp
@@ -60,6 +64,9 @@ set_property(SOURCE src/app.rc APPEND PROPERTY OBJECT_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/file_report.rc"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/resource.h")
 target_include_directories(BIC PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+# Заголовки закреплены вместе с комплектной DLL; импортной LIB нет, загрузка
+# выполняется только при структурном анализе из рабочего потока.
+target_include_directories(BIC SYSTEM PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pdfium/include")
 target_link_libraries(BIC PRIVATE shell32 ole32 oleaut32 uuid)
 target_compile_features(BIC PRIVATE cxx_std_20)
 target_compile_definitions(BIC PRIVATE UNICODE _UNICODE)
@@ -109,6 +116,26 @@ else()
     endif()
 endif()
 install(TARGETS BIC RUNTIME DESTINATION .)
+# PDFium поставляется рядом с BIC так же, как Ghostscript; отдельной установки
+# нет. Неполная поставка не должна давать сборку с молча отсутствующим анализом.
+set(BIC_PDFIUM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pdfium")
+foreach(component bin/pdfium.dll include/fpdfview.h include/fpdf_edit.h
+        include/fpdf_ppo.h include/fpdf_save.h LICENSE licenses)
+    if(NOT EXISTS "${BIC_PDFIUM_ROOT}/${component}")
+        message(FATAL_ERROR "Incomplete PDFium bundle: ${BIC_PDFIUM_ROOT}/${component}")
+    endif()
+endforeach()
+add_custom_target(bic_pdfium_runtime ALL
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:BIC>/runtime/pdfium/bin"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${BIC_PDFIUM_ROOT}/bin/pdfium.dll" "$<TARGET_FILE_DIR:BIC>/runtime/pdfium/bin/pdfium.dll"
+    COMMENT "Synchronizing bundled PDFium runtime"
+    VERBATIM)
+add_dependencies(BIC bic_pdfium_runtime)
+install(FILES "${BIC_PDFIUM_ROOT}/bin/pdfium.dll" DESTINATION runtime/pdfium/bin)
+install(FILES "${BIC_PDFIUM_ROOT}/LICENSE" "${BIC_PDFIUM_ROOT}/README.md"
+    "${BIC_PDFIUM_ROOT}/VERSION" "${BIC_PDFIUM_ROOT}/args.gn" DESTINATION licenses/pdfium)
+install(DIRECTORY "${BIC_PDFIUM_ROOT}/licenses/" DESTINATION licenses/pdfium/third_party)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ghostscript/source/"
     DESTINATION licenses/ghostscript/source)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ghostscript/README.md"

@@ -4,6 +4,7 @@
 #include "pdf_file_info.h"
 #include "pdf_progress_dialog.h"
 #include "pdf_report_dialog.h"
+#include "pdf_raster_analysis.h"
 
 #include <ole2.h>
 #include <shellapi.h>
@@ -318,6 +319,24 @@ std::wstring FormatFileInfo(const Pdf::FileInfo& file)
     {
         text += L"не определено";
     }
+    text += L"\r\nРастеризованных страниц: ";
+    if (file.raster_page_count)
+    {
+        text += std::to_wstring(*file.raster_page_count);
+    }
+    else if (file.page_count)
+    {
+        text += L"недоступно (код " + std::to_wstring(file.raster_error);
+        if (file.raster_pdfium_error != 0)
+        {
+            text += L", PDFium " + std::to_wstring(file.raster_pdfium_error);
+        }
+        text += L")";
+    }
+    else
+    {
+        text += L"не определено";
+    }
     return text;
 }
 
@@ -397,6 +416,7 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                     else
                     {
                         file_info.size_bytes = static_cast<std::uint64_t>(size.QuadPart);
+                        file_info.source_identity = info;
                         // Только существующий обычный файл передаётся движку.
                         // Ghostscript открывает PDF заново: размер остаётся
                         // доступным в отчёте даже при ошибке разбора PDF.
@@ -410,6 +430,20 @@ unsigned __stdcall MetadataWorker(void* parameter) noexcept
                         if (file_info.page_error == ERROR_SUCCESS)
                         {
                             file_info.page_count = page_count;
+                            // Структурный анализ выполняется после общего подсчёта:
+                            // ошибки PDFium не скрывают размер и число страниц.
+                            // Используем тот же проверенный локальный файловый объект.
+                            auto raster = PdfRasterAnalysis::CountRasterPages(
+                                file.get(), page_count, job->cancel);
+                            file_info.raster_page_count = raster.raster_pages;
+                            file_info.raster_pages = std::move(raster.page_is_raster);
+                            file_info.raster_error = raster.error;
+                            file_info.raster_pdfium_error = raster.pdfium_error;
+                            if (job->cancel.load())
+                            {
+                                job->error = ERROR_CANCELLED;
+                                break;
+                            }
                         }
                     }
                 }

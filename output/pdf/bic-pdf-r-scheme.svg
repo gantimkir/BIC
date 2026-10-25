@@ -1,0 +1,250 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="8127" viewBox="0 0 1600 8127">
+<title>BIC — Р-схемы обработки PDF, 25.10.2026</title>
+<desc>Нотация Р-схем по ГОСТ 19.005-85: вершины, горизонтальные направленные дуги, вертикальные соединения; условия над дугами, действия под дугами.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#214362"/></marker></defs>
+<style>text{font-family:Segoe UI,Arial,sans-serif;fill:#132f49}.title{font-size:30px;font-weight:700}.subtitle{font-size:18px}.panel{font-size:22px;font-weight:700}.note{font-size:16px;fill:#46586b}.condition{font-size:18px;font-weight:600}.action{font-size:17px}.edge{fill:none;stroke:#214362;stroke-width:2}.rail{stroke:#214362;stroke-width:2}.vertex{fill:white;stroke:#214362;stroke-width:2}</style>
+<rect width="1600" height="8127" fill="#f4f7fa"/>
+<text x="42" y="52" class="title">BIC · обработка PDF · Р-схемы</text>
+<text x="42" y="86" class="subtitle">Состояние исходников на 25.10.2026 · нотация ГОСТ 19.005-85</text>
+<text x="42" y="119" class="note">Условия над дугами; действия под дугами. S1–S9 и GS — вызовы раскрытых ниже структур.</text>
+<text x="42" y="146" class="note">Параллельные дуги — альтернативы, а не параллельные потоки. Циклы и выходы заданы надписями действий.</text>
+<text x="42" y="173" class="note">Реализовано в коде; сборка, тесты, запуск и проверка поведения в этой задаче не выполнялись (D-018).</text>
+<rect x="24" y="200" width="1552" height="433" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="231" class="panel">PDF — полный пользовательский сценарий</text>
+<text x="44" y="258" class="note">Последовательное соединение структур S1–S7; отказ завершает текущую операцию.</text>
+<path class="rail" d="M62 323 V537 M1538 323 V537"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 323 H1530"/>
+<text x="87" y="311" class="condition">Выбор принят</text>
+<text x="87" y="350" class="action">S1: получить пути → S2: проверить набор → S3: запустить worker → S6: загрузка → S7: отчёт</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 430 H1530"/>
+<text x="87" y="418" class="condition">Отмена выбора / пустой набор / отказ в проверке / worker занят</text>
+<text x="87" y="457" class="action">Завершить без отчёта; при отказе показать предупреждение или ошибку</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 537 H1530"/>
+<text x="87" y="525" class="condition">Отмена загрузки / общая ошибка задания / ошибка диалога</text>
+<text x="87" y="564" class="action">Запросить остановку, закрыть загрузку без отчёта; worker сам освобождает данные</text>
+<circle class="vertex" cx="62" cy="323" r="6"/><circle class="vertex" cx="1538" cy="323" r="6"/>
+<rect x="24" y="653" width="1552" height="647" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="684" class="panel">S1 — получение файлов: щелчок, клавиатура, OLE и WM_DROPFILES</text>
+<text x="44" y="711" class="note">FileDropArea::Create / ChooseFiles / ReadDropSelection / FileDropTarget</text>
+<path class="rail" d="M62 776 V1204 M1538 776 V1204"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 776 H1530"/>
+<text x="87" y="764" class="condition">Левый щелчок внутри области / Enter / Space без автоповтора</text>
+<text x="87" y="803" class="action">STA → IFileOpenDialog: *.pdf, несколько файлов, существующие файлы; получить пути</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 883 H1530"/>
+<text x="87" y="871" class="condition">OLE Drop: CF_HDROP, разрешён COPY, владелец доступен, очередь свободна</text>
+<text x="87" y="910" class="action">Проверить HGLOBAL → прочитать пути → ReleaseStgMedium → PostMessage → показать выбор</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 990 H1530"/>
+<text x="87" y="978" class="condition">WM_DROPFILES: владелец доступен</text>
+<text x="87" y="1017" class="action">Проверить DROPFILES → прочитать пути → DragFinish → показать выбор</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 1097 H1530"/>
+<text x="87" y="1085" class="condition">В drop есть не-PDF; расширение проверяется без учёта регистра</text>
+<text x="87" y="1124" class="action">Пропустить не-PDF и предупредить; один PDF разрешён; нет PDF — не запускать обработку</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 1204 H1530"/>
+<text x="87" y="1192" class="condition">Диалог отменён / OLE-формат не принят / владелец отключён</text>
+<text x="87" y="1231" class="action">Вернуть управление; ресурсы Shell/OLE освобождаются; исходные файлы не перемещаются</text>
+<circle class="vertex" cx="62" cy="776" r="6"/><circle class="vertex" cx="1538" cy="776" r="6"/>
+<rect x="24" y="1320" width="1552" height="540" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="1351" class="panel">S2 — ограничения входа и общая локальная папка</text>
+<text x="44" y="1378" class="note">CheckCount / CheckPath / ValidateDropPayload / SelectionFolder</text>
+<path class="rail" d="M62 1443 V1764 M1538 1443 V1764"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 1443 H1530"/>
+<text x="87" y="1431" class="condition">Число путей ≤ 1024; путь непустой, без NUL, ≤ 32760 знаков; сумма ≤ 262144</text>
+<text x="87" y="1470" class="action">Проверить расширение .pdf; резерв памяти — только после проверки соответствующего лимита</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 1550 H1530"/>
+<text x="87" y="1538" class="condition">Путь с буквой локального диска; тип FIXED / REMOVABLE / CDROM / RAMDISK</text>
+<text x="87" y="1577" class="action">Отклонить UNC, сетевой и недоступный диск; все принятые PDF должны иметь одну родительскую папку</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 1657 H1530"/>
+<text x="87" y="1645" class="condition">Для drop: sizeof(DROPFILES) ≤ размер блока ≤ 4 МиБ</text>
+<text x="87" y="1684" class="action">Проверить смещение, выравнивание Unicode, двойной терминатор; затем вызвать DragQueryFile</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 1764 H1530"/>
+<text x="87" y="1752" class="condition">Нарушено правило / нехватка памяти / ошибка Win32, COM или Shell</text>
+<text x="87" y="1791" class="action">Сообщить причину; не запускать worker; исключения не выходят за WNDPROC и IDropTarget::Drop</text>
+<circle class="vertex" cx="62" cy="1443" r="6"/><circle class="vertex" cx="1538" cy="1443" r="6"/>
+<rect x="24" y="1880" width="1552" height="540" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="1911" class="panel">S3 — запуск и жизненный цикл задания</text>
+<text x="44" y="1938" class="note">ShowPdfDetails / MetadataJob / MetadataWorker; UI и worker владеют shared_ptr.</text>
+<path class="rail" d="M62 2003 V2324 M1538 2003 V2324"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 2003 H1530"/>
+<text x="87" y="1991" class="condition">metadata_worker_active: false → true</text>
+<text x="87" y="2030" class="action">Создать FileInfo для каждого пути → _beginthreadex → UI открывает S6, worker выполняет S4</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2110 H1530"/>
+<text x="87" y="2098" class="condition">Предыдущее чтение ещё не завершилось</text>
+<text x="87" y="2137" class="action">Показать «Предыдущая операция ещё завершается»; новый поток не создавать</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2217 H1530"/>
+<text x="87" y="2205" class="condition">Поток не создан / ошибка подготовки задания</text>
+<text x="87" y="2244" class="action">Сбросить занятый слот, освободить память и показать ошибку</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2324 H1530"/>
+<text x="87" y="2312" class="condition">Worker завершился успешно, с ошибкой или после отмены</text>
+<text x="87" y="2351" class="action">done.store(release) → снять активный слот; UI читает files/error только после done.load(acquire)</text>
+<circle class="vertex" cx="62" cy="2003" r="6"/><circle class="vertex" cx="1538" cy="2003" r="6"/>
+<rect x="24" y="2440" width="1552" height="647" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="2471" class="panel">S4 — рабочий поток: цикл по принятым PDF</text>
+<text x="44" y="2498" class="note">До цикла открыть общую папку и проверить конечную локальную цель; обработка в исходном порядке.</text>
+<path class="rail" d="M62 2563 V2991 M1538 2563 V2991"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 2563 H1530"/>
+<text x="87" y="2551" class="condition">Следующий PDF; нет общей ошибки и флага cancel</text>
+<text x="87" y="2590" class="action">Открыть дескриптор метаданных → проверить конечный локальный путь и тип диска → размер файла</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2670 H1530"/>
+<text x="87" y="2658" class="condition">Обычный файл и размер доступен</text>
+<text x="87" y="2697" class="action">Ghostscript: общее число страниц; если получено — S5: количество растровых страниц через PDFium</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2777 H1530"/>
+<text x="87" y="2765" class="condition">Каталог / недоступный файл / ошибка отдельного движка</text>
+<text x="87" y="2804" class="action">Сохранить признак каталога или отдельный код ошибки; размер и успешные сведения не терять</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2884 H1530"/>
+<text x="87" y="2872" class="condition">Запись подготовлена и общий текст ≤ 524288 знаков</text>
+<text x="87" y="2911" class="action">FormatFileInfo → processed.fetch_add(release) → перейти к следующему файлу</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 2991 H1530"/>
+<text x="87" y="2979" class="condition">Сетевая конечная цель / ошибка папки / лимит текста / нехватка памяти / cancel</text>
+<text x="87" y="3018" class="action">Прекратить цикл, сохранить общую ошибку; отмена запрашивает остановку всего набора</text>
+<circle class="vertex" cx="62" cy="2563" r="6"/><circle class="vertex" cx="1538" cy="2563" r="6"/>
+<rect x="24" y="3107" width="1552" height="647" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="3138" class="panel">GS — общее количество страниц</text>
+<text x="44" y="3165" class="note">ReadPdfPageCount → Ghostscript::Run → комплект runtime/ghostscript/bin/gsdll64.dll</text>
+<path class="rail" d="M62 3230 V3658 M1538 3230 V3658"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 3230 H1530"/>
+<text x="87" y="3218" class="condition">Путь не содержит точки с запятой</text>
+<text x="87" y="3257" class="action">Передать путь параметром BICPDF и permit-file-read; runpdfbegin → pdfpagecount → маркер BIC_PAGE_COUNT</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 3337 H1530"/>
+<text x="87" y="3325" class="condition">Полный путь доверенной DLL; параллельного входа нет</text>
+<text x="87" y="3364" class="action">Загрузить 8 экспортов и версию → UTF-8 аргументы → BATCH / NOPAUSE / SAFER, локальные ресурсы и ICC</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 3444 H1530"/>
+<text x="87" y="3432" class="condition">Успех движка; журнал не усечён; маркер содержит целое положительное число</text>
+<text x="87" y="3471" class="action">Сохранить page_count; перейти к S5</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 3551 H1530"/>
+<text x="87" y="3539" class="condition">Ошибка API / отмена / нет маркера / журнал &gt; 64 КиБ / имя с «;»</text>
+<text x="87" y="3578" class="action">Сохранить page_error; счётчик растровых страниц не определён; размер остаётся доступен</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 3658 H1530"/>
+<text x="87" y="3646" class="condition">Любой выход из операции</text>
+<text x="87" y="3685" class="action">gsapi_exit при необходимости → удалить экземпляр → выгрузить DLL; polling проверяет cancel</text>
+<circle class="vertex" cx="62" cy="3230" r="6"/><circle class="vertex" cx="1538" cy="3230" r="6"/>
+<rect x="24" y="3774" width="1552" height="754" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="3805" class="panel">S5 — структурный подсчёт растровых страниц</text>
+<text x="44" y="3832" class="note">PdfRasterAnalysis::CountRasterPages; только чтение через PDFium 158.0.8111.0, без V8/XFA.</text>
+<path class="rail" d="M62 3897 V4432 M1538 3897 V4432"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 3897 H1530"/>
+<text x="87" y="3885" class="condition">Нет параллельного входа и отмены; ожидаемое число страниц &gt; 0</text>
+<text x="87" y="3924" class="action">ReOpenFile того же проверенного объекта с GENERIC_READ; FPDF_FILEACCESS читает блоки с проверкой cancel</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4004 H1530"/>
+<text x="87" y="3992" class="condition">Размер 1…ULONG_MAX; DLL и экспорты доступны</text>
+<text x="87" y="4031" class="action">runtime/pdfium/bin/pdfium.dll → InitLibrary → LoadCustomDocument; число страниц должно совпасть с Ghostscript</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4111 H1530"/>
+<text x="87" y="4099" class="condition">Каждая страница успешно загружена</text>
+<text x="87" y="4138" class="action">Обойти её объекты; Form XObject раскрывать рекурсивно; изображения устанавливают признак image</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4218 H1530"/>
+<text x="87" y="4206" class="condition">Есть image и нет текста / путей / shading</text>
+<text x="87" y="4245" class="action">Увеличить raster_pages на 1; пустая страница и страница с любым OCR-текстом не учитываются</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4325 H1530"/>
+<text x="87" y="4313" class="condition">Все страницы обработаны; отмены и ошибок нет</text>
+<text x="87" y="4352" class="action">Вернуть точное число по распознанным объектам, включая 0; закрыть страницы/документ, библиотеку и дескриптор</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4432 H1530"/>
+<text x="87" y="4420" class="condition">Ошибка чтения / загрузки / неизвестный тип / несовпадение страниц / предел обхода / cancel</text>
+<text x="87" y="4459" class="action">Вернуть nullopt и код ошибки, при загрузке — также PDFium-код; частичный счётчик не публиковать</text>
+<circle class="vertex" cx="62" cy="3897" r="6"/><circle class="vertex" cx="1538" cy="3897" r="6"/>
+<rect x="24" y="4548" width="1552" height="647" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="4579" class="panel">S5.1 — критерий страницы и границы анализа</text>
+<text x="44" y="4606" class="note">Не эвристика по наличию шрифтов в Resources; учитываются объекты, распознанные PDFium.</text>
+<path class="rail" d="M62 4671 V5099 M1538 4671 V5099"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 4671 H1530"/>
+<text x="87" y="4659" class="condition">FPDF_PAGEOBJ_IMAGE</text>
+<text x="87" y="4698" class="action">Изображение допустимо; несколько изображений и плитки допустимы; покрытие листа не измеряется</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4778 H1530"/>
+<text x="87" y="4766" class="condition">FPDF_PAGEOBJ_TEXT / PATH / SHADING</text>
+<text x="87" y="4805" class="action">Страница не растровая: исключают также невидимые, белые, обрезанные и перекрытые объекты</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4885 H1530"/>
+<text x="87" y="4873" class="condition">FPDF_PAGEOBJ_FORM</text>
+<text x="87" y="4912" class="action">Рекурсивно проверить дочерние объекты; сам контейнер Form не является векторной графикой</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 4992 H1530"/>
+<text x="87" y="4980" class="condition">Глубина &gt; 64 / исчерпан бюджет 1 000 000 посещённых объектов на документ</text>
+<text x="87" y="5019" class="action">Результат анализа недоступен; размеры и page_count сохраняются</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 5099 H1530"/>
+<text x="87" y="5087" class="condition">Аннотации, история сканирования и строгая валидация повреждённого PDF</text>
+<text x="87" y="5126" class="action">Не входят в критерий: отдельные appearance-потоки не обходятся; PDFium может восстановить повреждения</text>
+<circle class="vertex" cx="62" cy="4671" r="6"/><circle class="vertex" cx="1538" cy="4671" r="6"/>
+<rect x="24" y="5215" width="1552" height="540" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="5246" class="panel">S6 — модальная загрузка и отмена</text>
+<text x="44" y="5273" class="note">PdfProgressDialog::Show; таймер 50 мс, каждый показанный шаг держится минимум 500 мс.</text>
+<path class="rail" d="M62 5338 V5659 M1538 5338 V5659"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 5338 H1530"/>
+<text x="87" y="5326" class="condition">Worker ещё выполняется / интерфейс догоняет processed</text>
+<text x="87" y="5365" class="action">Показывать «Обработано PDF: N из M» по одному завершённому файлу; worker не обращается к HWND</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 5445 H1530"/>
+<text x="87" y="5433" class="condition">done и нет общей ошибки; shown = total; последний шаг показан 500 мс</text>
+<text x="87" y="5472" class="action">Закрыть загрузку с IDOK → открыть S7 с готовым вектором результатов</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 5552 H1530"/>
+<text x="87" y="5540" class="condition">«Отмена» / крестик</text>
+<text x="87" y="5579" class="action">cancel = true; если worker не закончен — CancelSynchronousIo; закрыть без ожидания и без отчёта</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 5659 H1530"/>
+<text x="87" y="5647" class="condition">done с ошибкой или неполным processed / ошибка ресурса, таймера или диалога</text>
+<text x="87" y="5686" class="action">Закрыть без отчёта, запросить отмену при необходимости и показать причину</text>
+<circle class="vertex" cx="62" cy="5338" r="6"/><circle class="vertex" cx="1538" cy="5338" r="6"/>
+<rect x="24" y="5775" width="1552" height="754" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="5806" class="panel">S7 — просмотр готовых сведений одного PDF</text>
+<text x="44" y="5833" class="note">PdfReportDialog::Show / ShowCurrentFile; чтение и преобразование PDF при навигации не запускаются.</text>
+<path class="rail" d="M62 5898 V6433 M1538 5898 V6433"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 5898 H1530"/>
+<text x="87" y="5886" class="condition">Окно создано; все обязательные контролы найдены</text>
+<text x="87" y="5925" class="action">Показать «Файл N из M», имя, полный путь, размер, страницы и растровые страницы либо ошибки</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6005 H1530"/>
+<text x="87" y="5993" class="condition">Нажато «Назад» / «Вперёд»; worker не работает и переход доступен</text>
+<text x="87" y="6032" class="action">Удалить несохранённый временный результат → свернуть блок → изменить индекс → показать запись</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6112 H1530"/>
+<text x="87" y="6100" class="condition">Файл полностью растровый / анализ недоступен</text>
+<text x="87" y="6139" class="action">Кнопка «Растеризация» отключена; при известном анализе и нерастровых страницах — активна</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6219 H1530"/>
+<text x="87" y="6207" class="condition">Нажата активная «Растеризация»</text>
+<text x="87" y="6246" class="action">Раскрыть блок в этом окне (134 → 291 DLU) → S8; параметры 300 DPI / RGB JPEG 80%</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6326 H1530"/>
+<text x="87" y="6314" class="condition">«Закрыть» / Enter / Escape / крестик</text>
+<text x="87" y="6353" class="action">Запросить отмену worker без ожидания; завершить просмотр; worker владеет job до собственного выхода</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6433 H1530"/>
+<text x="87" y="6421" class="condition">Старый ресурс / ошибка заполнения поля / ошибка DialogBoxParam</text>
+<text x="87" y="6460" class="action">Показать сообщение и закрыть окно; исходные PDF не изменяются</text>
+<circle class="vertex" cx="62" cy="5898" r="6"/><circle class="vertex" cx="1538" cy="5898" r="6"/>
+<rect x="24" y="6549" width="1552" height="754" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="6580" class="panel">S8 — фоновая подготовка результата для сравнения</text>
+<text x="44" y="6607" class="note">PdfRasterJob: один job с фазами, cancel и done; GUI опрашивает его таймером 100 мс.</text>
+<path class="rail" d="M62 6672 V7207 M1538 6672 V7207"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 6672 H1530"/>
+<text x="87" y="6660" class="condition">Исходник доступен, локален и совпадает с анализом по ID / размеру / времени записи</text>
+<text x="87" y="6699" class="action">Заблокировать запись на время копирования → снимок source.pdf в собственном GUID-каталоге TEMP</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6779 H1530"/>
+<text x="87" y="6767" class="condition">Повторный анализ снимка совпал с сохранённой классификацией страниц</text>
+<text x="87" y="6806" class="action">Ghostscript pdfimage24: PageList только нерастровых страниц, CropBox, 300 DPI, JPEGQ=80 → converted.pdf</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6886 H1530"/>
+<text x="87" y="6874" class="condition">Растеризация успешна; число полученных страниц соответствует PageList</text>
+<text x="87" y="6913" class="action">PDFium: импортировать в прежнем порядке старые растровые и новые преобразованные страницы → result.pdf</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 6993 H1530"/>
+<text x="87" y="6981" class="condition">Видимые размеры совпали (допуск 1 pt); повторный анализ result.pdf успешен</text>
+<text x="87" y="7020" class="action">Зафиксировать размер до/после и изменение в процентах; готовый результат хранится до выбора сохранения</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7100 H1530"/>
+<text x="87" y="7088" class="condition">Файл изменился / ошибка движка, чтения, записи, проверки / «Отмена»</text>
+<text x="87" y="7127" class="action">Результат не предлагать к сохранению; показать причину; отмена кооперативная; исходник не меняется</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7207 H1530"/>
+<text x="87" y="7195" class="condition">Подготовка завершена успешно</text>
+<text x="87" y="7234" class="action">Разрешить S9, навигацию и сворачивание; уже растровые изображения повторно не JPEG-сжимались</text>
+<circle class="vertex" cx="62" cy="6672" r="6"/><circle class="vertex" cx="1538" cy="6672" r="6"/>
+<rect x="24" y="7323" width="1552" height="754" rx="10" fill="white" stroke="#cbd5df"/>
+<text x="44" y="7354" class="panel">S9 — сравнение, выбор папки и сохранение</text>
+<text x="44" y="7381" class="note">Нижний блок текущего окна: «До», «После», «Изменение», имя результата и два расположения.</text>
+<path class="rail" d="M62 7446 V7981 M1538 7446 V7981"/>
+<path class="edge" marker-end="url(#arrow)" d="M68 7446 H1530"/>
+<text x="87" y="7434" class="condition">Результат готов</text>
+<text x="87" y="7473" class="action">Показать байты и МиБ, процент изменения; если размер вырос — явно отметить увеличение</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7553 H1530"/>
+<text x="87" y="7541" class="condition">Выбрано «В папке исходного файла» / «На рабочем столе» и нажато «Сохранить»</text>
+<text x="87" y="7580" class="action">Worker: Known Folder Desktop при необходимости; имя &lt;исходное&gt;_rastre.pdf; копировать готовый result.pdf</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7660 H1530"/>
+<text x="87" y="7648" class="condition">Временный файл в целевой папке полностью записан и отмены ещё нет</text>
+<text x="87" y="7687" class="action">MoveFileEx без REPLACE_EXISTING → опубликовать целый PDF; показать путь сохранения</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7767 H1530"/>
+<text x="87" y="7755" class="condition">Имя уже существует / нет записи / ошибка копирования / отмена до публикации</text>
+<text x="87" y="7794" class="action">Существующие файлы не менять; удалить частичный временный файл; результат оставить для повторного выбора папки</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7874 H1530"/>
+<text x="87" y="7862" class="condition">«Свернуть», навигация или закрытие после завершения worker</text>
+<text x="87" y="7901" class="action">Удалить собственные временные source/converted/result и GUID-каталог; опубликованный PDF сохраняется</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 7981 H1530"/>
+<text x="87" y="7969" class="condition">Сборка нового PDF</text>
+<text x="87" y="8008" class="action">Текст преобразованных страниц становится изображением; закладки, метаданные и интерактивность документа не переносятся</text>
+<circle class="vertex" cx="62" cy="7446" r="6"/><circle class="vertex" cx="1538" cy="7446" r="6"/>
+<text x="42" y="8114" class="note">Исходники: src/pdf · генератор: docs/pdf/create_r_scheme.ps1 · описание критерия: third_party/pdfium/README.md</text>
+</svg>

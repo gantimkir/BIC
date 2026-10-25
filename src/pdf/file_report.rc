@@ -1,16 +1,33 @@
 // Системный модальный диалог: один выбранный PDF и навигация по набору.
 // Файл включается из src/app.rc, поэтому не компилируется как отдельный ресурс.
-IDD_PDF_DETAILS DIALOGEX 0, 0, 340, 220
+// Поле рассчитано на пять строк сведений. Длинные пути и сообщения об ошибках
+// остаются доступны через прокрутку; ширина сохранена для чтения пути файла.
+// Нижний блок скрывается кодом вместе с уменьшением высоты до 134 DLU.
+// По нажатию «Растеризация» раскрывается в этом же окне, без нового диалога.
+IDD_PDF_DETAILS DIALOGEX 0, 0, 340, 291
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Сведения о PDF"
 FONT 9, "Segoe UI"
 BEGIN
     LTEXT "Подготовка сведений…", IDC_PDF_POSITION, 8, 8, 324, 13
-    EDITTEXT IDC_PDF_DETAILS_TEXT, 8, 25, 324, 158,
+    EDITTEXT IDC_PDF_DETAILS_TEXT, 8, 25, 324, 72,
         ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL | WS_BORDER | WS_TABSTOP
-    PUSHBUTTON "Назад", IDC_PDF_PREVIOUS, 8, 194, 60, 18
-    PUSHBUTTON "Вперёд", IDC_PDF_NEXT, 74, 194, 60, 18
-    DEFPUSHBUTTON "Закрыть", IDCANCEL, 282, 194, 50, 18
+    PUSHBUTTON "Назад", IDC_PDF_PREVIOUS, 8, 108, 60, 18
+    // Доступность задаётся по полной классификации текущего файла.
+    PUSHBUTTON "Растеризация", IDC_PDF_RASTERIZE, 74, 108, 86, 18, WS_DISABLED
+    PUSHBUTTON "Вперёд", IDC_PDF_NEXT, 166, 108, 60, 18
+    DEFPUSHBUTTON "Закрыть", IDCANCEL, 282, 108, 50, 18
+    CONTROL "", IDC_PDF_RASTER_SEPARATOR, "STATIC", SS_ETCHEDHORZ, 8, 136, 324, 1
+    LTEXT "Растеризация: 300 DPI · JPEG 80%", IDC_PDF_RASTER_SETTINGS, 8, 143, 324, 12
+    LTEXT "", IDC_PDF_RASTER_STATUS, 8, 159, 324, 24
+    LTEXT "До: —", IDC_PDF_RASTER_BEFORE, 8, 187, 324, 12
+    LTEXT "После: —", IDC_PDF_RASTER_AFTER, 8, 201, 324, 12
+    LTEXT "Изменение: —", IDC_PDF_RASTER_DELTA, 8, 215, 324, 12
+    LTEXT "", IDC_PDF_RASTER_NAME, 8, 230, 324, 14, SS_PATHELLIPSIS
+    AUTORADIOBUTTON "В папке исходного файла", IDC_PDF_RASTER_FOLDER, 8, 248, 166, 12, WS_GROUP | WS_TABSTOP
+    AUTORADIOBUTTON "На рабочем столе", IDC_PDF_RASTER_DESKTOP, 182, 248, 150, 12
+    PUSHBUTTON "Сохранить", IDC_PDF_RASTER_SAVE, 8, 265, 70, 18, WS_DISABLED
+    PUSHBUTTON "Отмена", IDC_PDF_RASTER_DISCARD, 84, 265, 70, 18
 END
 
 // Во время чтения большого набора показываем отдельное модальное окно.
