@@ -337,7 +337,10 @@ std::shared_ptr<PdfRasterJob::Job> PdfRasterJob::Start(const Pdf::FileInfo& file
 
 bool PdfRasterJob::Save(const std::shared_ptr<Job>& job, bool desktop)
 {
-    if (!job || !job->done.load(std::memory_order_acquire) || !job->ready) { return false; }
+    // Успешно опубликованный результат завершает операцию. Повтор разрешён
+    // только после ошибки/отмены сохранения, пока копия ещё не опубликована.
+    if (!job || !job->done.load(std::memory_order_acquire) || !job->ready ||
+        job->phase.load() == Phase::Saved) { return false; }
     job->save_to_desktop = desktop;
     job->cancel.store(false);
     job->error = ERROR_SUCCESS;

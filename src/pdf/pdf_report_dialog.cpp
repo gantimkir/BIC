@@ -6,6 +6,7 @@
 #include <cwchar>
 #include <new>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -21,6 +22,10 @@ struct DialogContext
 {
     const std::vector<Pdf::FileInfo>& files;
     size_t current_index = 0;
+    // Сохранённая копия заменяет представление соответствующего файла только
+    // в этом сеансе просмотра. Запись переживает сворачивание блока и навигацию;
+    // исходный список вызывающего кода и файлы на диске не изменяются.
+    std::vector<std::optional<Pdf::FileInfo>> saved_files;
     std::shared_ptr<PdfRasterJob::Job> job;
     bool expanded = false;
     bool completion_handled = false;
@@ -38,6 +43,37 @@ bool Busy(const DialogContext& context) noexcept
     return context.job && !context.job->done.load(std::memory_order_acquire);
 }
 
+bool IsSaved(const DialogContext& context) noexcept
+{
+    return context.current_index < context.saved_files.size() &&
+        context.saved_files[context.current_index].has_value();
+}
+
+const Pdf::FileInfo& CurrentFile(const DialogContext& context) noexcept
+{
+    return IsSaved(context) ? *context.saved_files[context.current_index] :
+        context.files[context.current_index];
+}
+
+Pdf::FileInfo SavedFileInfo(const PdfRasterJob::Job& job)
+{
+    // Сохранялся именно проверенный result.pdf, без повторного преобразования:
+    // его размер и число страниц известны из подготовки и успешной публикации.
+    // На UI-потоке не запускаем дополнительное чтение или разбор PDF.
+    Pdf::FileInfo file;
+    file.path = job.saved_path;
+    file.size_bytes = job.after_bytes;
+    file.page_count = job.source.page_count;
+    file.raster_page_count = job.source.page_count;
+    file.raster_pages.assign(static_cast<size_t>(*file.page_count), 1);
+    const auto name = file.path.substr(file.path.find_last_of(L"\\/") + 1);
+    file.display_text = L"Имя: " + name + L"\r\nПуть: " + file.path +
+        L"\r\nРазмер: " + std::to_wstring(*file.size_bytes) + L" байт" +
+        L"\r\nСтраниц: " + std::to_wstring(*file.page_count) +
+        L"\r\nРастеризованных страниц: " + std::to_wstring(*file.raster_page_count);
+    return file;
+}
+
 bool CanRasterize(const Pdf::FileInfo& file) noexcept
 {
     // Неизвестный результат не равен отсутствию растровых страниц: без полной
@@ -51,16 +87,18 @@ bool CanRasterize(const Pdf::FileInfo& file) noexcept
 void UpdateButtons(HWND dialog, const DialogContext& context) noexcept
 {
     const bool busy = Busy(context);
+    const bool saved = IsSaved(context);
     EnableWindow(GetDlgItem(dialog, IDC_PDF_PREVIOUS), !busy && context.current_index > 0);
     EnableWindow(GetDlgItem(dialog, IDC_PDF_NEXT), !busy && context.current_index + 1 < context.files.size());
     EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTERIZE),
-        !busy && CanRasterize(context.files[context.current_index]));
+        !busy && !saved && CanRasterize(CurrentFile(context)));
     // Обычные поля job читаются лишь после done(acquire); короткое замыкание
     // здесь обязательно, пока worker меняет ready/error/saved_path.
     const bool ready = !busy && context.job && context.job->ready;
-    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_SAVE), ready && context.job->phase.load() != PdfRasterJob::Phase::Saved);
-    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_FOLDER), !busy);
-    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_DESKTOP), !busy);
+    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_SAVE),
+        ready && !saved && context.job->phase.load() != PdfRasterJob::Phase::Saved);
+    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_FOLDER), !busy && !saved);
+    EnableWindow(GetDlgItem(dialog, IDC_PDF_RASTER_DESKTOP), !busy && !saved);
     SetDlgItemTextW(dialog, IDC_PDF_RASTER_DISCARD, busy ? L"Отмена" : L"Свернуть");
 }
 
@@ -111,7 +149,7 @@ bool ShowCurrentFile(HWND dialog, DialogContext& context)
     wchar_t position[64]{};
     swprintf_s(position, L"Файл %zu из %zu", context.current_index + 1, files.size());
     if (!SetDlgItemTextW(dialog, IDC_PDF_POSITION, position) ||
-        !SetDlgItemTextW(dialog, IDC_PDF_DETAILS_TEXT, files[context.current_index].display_text.c_str()))
+        !SetDlgItemTextW(dialog, IDC_PDF_DETAILS_TEXT, CurrentFile(context).display_text.c_str()))
     {
         ShowError(dialog, L"Не удалось показать сведения о PDF.", GetLastError());
         EndDialog(dialog, IDCANCEL);
@@ -186,6 +224,16 @@ void RefreshJob(HWND dialog, DialogContext& context)
     if (context.completion_handled) { return; }
     // Обработчик MessageBox может повторно войти в модальный цикл таймера.
     context.completion_handled = true;
+    if (job->error == ERROR_SUCCESS && job->phase.load() == PdfRasterJob::Phase::Saved)
+    {
+        // Только успешная публикация меняет текущую запись. При ошибке/отмене
+        // сведения исходника и возможность повторного сохранения сохраняются.
+        context.saved_files[context.current_index] = SavedFileInfo(*job);
+        if (!ShowCurrentFile(dialog, context)) { return; }
+        // Кнопка «Сохранить» стала недоступной: фокус переносится на видимую
+        // доступную команду, а не остаётся на отключённом контроле.
+        SetFocus(GetDlgItem(dialog, IDC_PDF_RASTER_DISCARD));
+    }
     UpdateButtons(dialog, context);
     if (job->ready)
     {
@@ -227,7 +275,7 @@ void RefreshJob(HWND dialog, DialogContext& context)
 
 void StartRaster(HWND dialog, DialogContext& context)
 {
-    if (Busy(context) || !CanRasterize(context.files[context.current_index])) { return; }
+    if (Busy(context) || IsSaved(context) || !CanRasterize(CurrentFile(context))) { return; }
     context.job.reset();
     context.completion_handled = false;
     CheckRadioButton(dialog, IDC_PDF_RASTER_FOLDER, IDC_PDF_RASTER_DESKTOP, IDC_PDF_RASTER_FOLDER);
@@ -273,6 +321,7 @@ INT_PTR DialogProcedureImpl(HWND dialog, UINT message, WPARAM w_param, LPARAM l_
                 return TRUE;
             }
         }
+        context->saved_files.resize(context->files.size());
         if (context->files.empty() || !SetExpanded(dialog, *context, false) ||
             !ShowCurrentFile(dialog, *context))
         {
@@ -295,6 +344,9 @@ INT_PTR DialogProcedureImpl(HWND dialog, UINT message, WPARAM w_param, LPARAM l_
     }
     if (message == WM_COMMAND && context)
     {
+        // Завершение может случиться между тиками таймера и нажатием «Свернуть».
+        // Сначала фиксируем успешное сохранение, затем разрешаем сбросить job.
+        RefreshJob(dialog, *context);
         const int command = LOWORD(w_param);
         if (command == IDC_PDF_RASTERIZE)
         {
@@ -303,7 +355,7 @@ INT_PTR DialogProcedureImpl(HWND dialog, UINT message, WPARAM w_param, LPARAM l_
         }
         if (command == IDC_PDF_RASTER_SAVE)
         {
-            if (!Busy(*context) && context->job && context->job->ready)
+            if (!Busy(*context) && !IsSaved(*context) && context->job && context->job->ready)
             {
                 context->completion_handled = false;
                 PdfRasterJob::Save(context->job,
@@ -322,9 +374,9 @@ INT_PTR DialogProcedureImpl(HWND dialog, UINT message, WPARAM w_param, LPARAM l_
             }
             else
             {
-                SetFocus(GetDlgItem(dialog, IDC_PDF_RASTERIZE));
                 ResetBlock(dialog, *context);
                 UpdateButtons(dialog, *context);
+                SetFocus(GetDlgItem(dialog, IsSaved(*context) ? IDCANCEL : IDC_PDF_RASTERIZE));
             }
             return TRUE;
         }

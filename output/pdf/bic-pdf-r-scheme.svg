@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="8127" viewBox="0 0 1600 8127">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="8234" viewBox="0 0 1600 8234">
 <title>BIC — Р-схемы обработки PDF, 25.10.2026</title>
 <desc>Нотация Р-схем по ГОСТ 19.005-85: вершины, горизонтальные направленные дуги, вертикальные соединения; условия над дугами, действия под дугами.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#214362"/></marker></defs>
 <style>text{font-family:Segoe UI,Arial,sans-serif;fill:#132f49}.title{font-size:30px;font-weight:700}.subtitle{font-size:18px}.panel{font-size:22px;font-weight:700}.note{font-size:16px;fill:#46586b}.condition{font-size:18px;font-weight:600}.action{font-size:17px}.edge{fill:none;stroke:#214362;stroke-width:2}.rail{stroke:#214362;stroke-width:2}.vertex{fill:white;stroke:#214362;stroke-width:2}</style>
-<rect width="1600" height="8127" fill="#f4f7fa"/>
+<rect width="1600" height="8234" fill="#f4f7fa"/>
 <text x="42" y="52" class="title">BIC · обработка PDF · Р-схемы</text>
 <text x="42" y="86" class="subtitle">Состояние исходников на 25.10.2026 · нотация ГОСТ 19.005-85</text>
 <text x="42" y="119" class="note">Условия над дугами; действия под дугами. S1–S9 и GS — вызовы раскрытых ниже структур.</text>
@@ -223,10 +223,10 @@
 <text x="87" y="7195" class="condition">Подготовка завершена успешно</text>
 <text x="87" y="7234" class="action">Разрешить S9, навигацию и сворачивание; уже растровые изображения повторно не JPEG-сжимались</text>
 <circle class="vertex" cx="62" cy="6672" r="6"/><circle class="vertex" cx="1538" cy="6672" r="6"/>
-<rect x="24" y="7323" width="1552" height="754" rx="10" fill="white" stroke="#cbd5df"/>
+<rect x="24" y="7323" width="1552" height="861" rx="10" fill="white" stroke="#cbd5df"/>
 <text x="44" y="7354" class="panel">S9 — сравнение, выбор папки и сохранение</text>
 <text x="44" y="7381" class="note">Нижний блок текущего окна: «До», «После», «Изменение», имя результата и два расположения.</text>
-<path class="rail" d="M62 7446 V7981 M1538 7446 V7981"/>
+<path class="rail" d="M62 7446 V8088 M1538 7446 V8088"/>
 <path class="edge" marker-end="url(#arrow)" d="M68 7446 H1530"/>
 <text x="87" y="7434" class="condition">Результат готов</text>
 <text x="87" y="7473" class="action">Показать байты и МиБ, процент изменения; если размер вырос — явно отметить увеличение</text>
@@ -235,16 +235,19 @@
 <text x="87" y="7580" class="action">Worker: Known Folder Desktop при необходимости; имя &lt;исходное&gt;_rastre.pdf; копировать готовый result.pdf</text>
 <path class="edge" marker-end="url(#arrow)" d="M68 7660 H1530"/>
 <text x="87" y="7648" class="condition">Временный файл в целевой папке полностью записан и отмены ещё нет</text>
-<text x="87" y="7687" class="action">MoveFileEx без REPLACE_EXISTING → опубликовать целый PDF; показать путь сохранения</text>
+<text x="87" y="7687" class="action">MoveFileEx без REPLACE_EXISTING → опубликовать PDF; верхние сведения заменить сохранённой копией</text>
 <path class="edge" marker-end="url(#arrow)" d="M68 7767 H1530"/>
-<text x="87" y="7755" class="condition">Имя уже существует / нет записи / ошибка копирования / отмена до публикации</text>
-<text x="87" y="7794" class="action">Существующие файлы не менять; удалить частичный временный файл; результат оставить для повторного выбора папки</text>
+<text x="87" y="7755" class="condition">Сохранение успешно; запись зафиксирована для текущего файла</text>
+<text x="87" y="7794" class="action">Отключить «Растеризация», «Сохранить» и оба пути; сохранить состояние при сворачивании и возврате по навигации</text>
 <path class="edge" marker-end="url(#arrow)" d="M68 7874 H1530"/>
-<text x="87" y="7862" class="condition">«Свернуть», навигация или закрытие после завершения worker</text>
-<text x="87" y="7901" class="action">Удалить собственные временные source/converted/result и GUID-каталог; опубликованный PDF сохраняется</text>
+<text x="87" y="7862" class="condition">Имя уже существует / нет записи / ошибка копирования / отмена до публикации</text>
+<text x="87" y="7901" class="action">Существующие файлы не менять; удалить частичный временный файл; результат оставить для повторного выбора папки</text>
 <path class="edge" marker-end="url(#arrow)" d="M68 7981 H1530"/>
-<text x="87" y="7969" class="condition">Сборка нового PDF</text>
-<text x="87" y="8008" class="action">Текст преобразованных страниц становится изображением; закладки, метаданные и интерактивность документа не переносятся</text>
+<text x="87" y="7969" class="condition">«Свернуть», навигация или закрытие после завершения worker</text>
+<text x="87" y="8008" class="action">Удалить собственные временные source/converted/result и GUID-каталог; опубликованный PDF сохраняется</text>
+<path class="edge" marker-end="url(#arrow)" d="M68 8088 H1530"/>
+<text x="87" y="8076" class="condition">Сборка нового PDF</text>
+<text x="87" y="8115" class="action">Текст преобразованных страниц становится изображением; закладки, метаданные и интерактивность документа не переносятся</text>
 <circle class="vertex" cx="62" cy="7446" r="6"/><circle class="vertex" cx="1538" cy="7446" r="6"/>
-<text x="42" y="8114" class="note">Исходники: src/pdf · генератор: docs/pdf/create_r_scheme.ps1 · описание критерия: third_party/pdfium/README.md</text>
+<text x="42" y="8221" class="note">Исходники: src/pdf · генератор: docs/pdf/create_r_scheme.ps1 · описание критерия: third_party/pdfium/README.md</text>
 </svg>

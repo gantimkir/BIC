@@ -11,7 +11,7 @@ enum class Phase { Snapshot, Analyze, Render, Combine, Validate, Ready, Save, Sa
 
 // Worker не использует HWND. UI читает обычные поля только после done(acquire),
 // phase — атомарно в любое время. Последняя shared_ptr удаляет временные файлы.
-// Повторное сохранение использует тот же готовый PDF, без новой растеризации.
+// Повторная попытка после ошибки сохранения использует тот же готовый PDF.
 struct Job
 {
     Pdf::FileInfo source;
@@ -38,7 +38,8 @@ struct Job
 // Запускает подготовку 300 DPI / RGB JPEG 80% на отдельном потоке.
 // При ошибке запуска выбрасывает исключение, которое обрабатывает UI.
 std::shared_ptr<Job> Start(const Pdf::FileInfo& file);
-// Вызывать только после done и ready; false — поток сохранения не создан.
+// Вызывать только после done и ready, до успешной публикации; false означает
+// недопустимое состояние или ошибку создания потока сохранения.
 bool Save(const std::shared_ptr<Job>& job, bool desktop);
 // Кооперативная отмена без ожидания завершения потока, безопасна для UI.
 void Cancel(const std::shared_ptr<Job>& job) noexcept;
