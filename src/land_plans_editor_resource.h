@@ -1,0 +1,12 @@
+#pragma once
+#define IDD_LAND_PLANS_EDITOR 104
+#define IDC_LP_LIST 1101
+#define IDC_LP_TYPE 1102
+#define IDC_LP_VALUE 1103
+#define IDC_LP_BROWSE 1104
+#define IDC_LP_ADD 1105
+#define IDC_LP_UPDATE 1106
+#define IDC_LP_DELETE 1107
+#define IDC_LP_UP 1108
+#define IDC_LP_DOWN 1109
+#define IDC_LP_PREVIEW 1110

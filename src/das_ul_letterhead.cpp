@@ -32,8 +32,8 @@ void OpenOne(const wchar_t* path, OfficeDocument::Application application,
 
 void DasUlLetterhead::Open(HWND owner)
 {
-    // SPI_GETWORKAREA возвращает рабочую область основного монитора без панели задач,
-    // в той же системе экранных координат, что и Rectangle в OfficeDocument.
+    // ЮЛ — исключение из общего выбора «Размещение»: три документа занимают
+    // разные четверти рабочей области основного монитора без панели задач.
     RECT work{};
     if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0))
     {
@@ -49,13 +49,12 @@ void DasUlLetterhead::Open(HWND owner)
             L"Бланк ДАС. ЮЛ", MB_OK | MB_ICONERROR);
         return;
     }
+    // Общая граница четвертей сохраняет покрытие при нечётном размере области.
     const LONG middle_x = work.left + (work.right - work.left) / 2;
     const LONG middle_y = work.top + (work.bottom - work.top) / 2;
-    // Общие границы четвертей исключают щели при нечётной ширине или высоте экрана.
     const RECT lower_left{work.left, middle_y, middle_x, work.bottom};
     const RECT upper_left{work.left, work.top, middle_x, middle_y};
     const RECT upper_right{middle_x, work.top, work.right, middle_y};
-
     std::wstring errors;
     OpenOne(L"C:\\YD\\ИП Гантимуров КВ\\Договоры\\ОБРАЗЦЫ\\Шаблон ЮЛ №1-1 - дог.doc",
         OfficeDocument::Application::Word, lower_left, errors);

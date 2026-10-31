@@ -3,12 +3,12 @@
 #include "office_document.h"
 
 // Команда задаёт документ и размещение; COM и окно Word обрабатывает общий модуль.
-void IpLetterhead::Open(HWND owner)
+void IpLetterhead::Open(HWND owner, const RECT& bounds)
 {
     const OfficeDocument::OpenOptions options{
         .path = L"C:\\YD\\ИП Гантимуров КВ\\ИП Гантимуров КВ - бланк 2.docx",
         .application = OfficeDocument::Application::Word,
-        .window = {.placement = OfficeDocument::Placement::LeftHalf},
+        .window = {.placement = OfficeDocument::Placement::Rectangle, .rectangle = bounds},
     };
     const auto result = OfficeDocument::Open(options);
     if (!result)

@@ -3,12 +3,12 @@
 #include "office_document.h"
 
 // Команда задаёт только файл и параметры; COM и размещение окна — в общем модуле.
-void ContractRegistry::Open(HWND owner)
+void ContractRegistry::Open(HWND owner, const RECT& bounds)
 {
     const OfficeDocument::OpenOptions options{
         .path = L"C:\\YD\\ИП Гантимуров КВ\\Договоры\\Реестр договоров.xlsx",
         .application = OfficeDocument::Application::Excel,
-        .window = {.placement = OfficeDocument::Placement::LeftHalf},
+        .window = {.placement = OfficeDocument::Placement::Rectangle, .rectangle = bounds},
     };
     const auto result = OfficeDocument::Open(options);
     if (!result)

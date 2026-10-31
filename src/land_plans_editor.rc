@@ -1,0 +1,23 @@
+// Включается из app.rc. Размеры диалога — DLU, отрезки разделителя — пиксели.
+IDD_LAND_PLANS_EDITOR DIALOGEX 0, 0, 440, 316
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Папки — редактор списка"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Папки сортируются по алфавиту внутри групп. Разделители задают границы групп.", -1, 8, 8, 424, 22
+    LISTBOX IDC_LP_LIST, 8, 32, 344, 140, LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL | WS_TABSTOP | LBS_NOINTEGRALHEIGHT
+    PUSHBUTTON "Вверх", IDC_LP_UP, 360, 32, 72, 20
+    PUSHBUTTON "Вниз", IDC_LP_DOWN, 360, 58, 72, 20
+    PUSHBUTTON "Удалить", IDC_LP_DELETE, 360, 84, 72, 20
+    LTEXT "Тип:", -1, 8, 181, 28, 12
+    COMBOBOX IDC_LP_TYPE, 38, 178, 110, 60, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "Путь папки или текст разделителя:", -1, 8, 203, 230, 12
+    EDITTEXT IDC_LP_VALUE, 8, 218, 344, 20, ES_AUTOHSCROLL | WS_TABSTOP
+    PUSHBUTTON "Обзор…", IDC_LP_BROWSE, 360, 218, 72, 20
+    PUSHBUTTON "Добавить", IDC_LP_ADD, 8, 244, 80, 20
+    PUSHBUTTON "Применить к строке", IDC_LP_UPDATE, 96, 244, 116, 20
+    CONTROL "", IDC_LP_PREVIEW, "STATIC", SS_OWNERDRAW, 220, 244, 212, 20
+    LTEXT "Сохранение — в land_plans.user.txt рядом с BIC.exe. Сборка его не заменяет.", -1, 8, 272, 424, 14
+    DEFPUSHBUTTON "Сохранить", IDOK, 272, 292, 76, 18
+    PUSHBUTTON "Отмена", IDCANCEL, 356, 292, 76, 18
+END

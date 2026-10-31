@@ -67,7 +67,7 @@ void ShowError(HWND owner, const std::wstring& message)
 }
 } // namespace
 
-void Pzz6148Graphics::Open(HWND owner)
+void Pzz6148Graphics::Open(HWND owner, const RECT& bounds)
 {
     if (!IsRegularFile(kImagePath))
     {
@@ -131,24 +131,11 @@ void Pzz6148Graphics::Open(HWND owner)
         return;
     }
 
-    RECT work_area{};
-    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0))
-    {
-        const DWORD error = GetLastError();
-        CloseHandle(process_info.hProcess);
-        ShowError(owner, L"Не удалось определить рабочую область экрана.\n"
-            L"Код ошибки: " + std::to_wstring(error));
-        return;
-    }
-
-    const int work_width = work_area.right - work_area.left;
-    const int work_height = work_area.bottom - work_area.top;
-    const int left = work_area.left + work_width / 2;
-    const int width = work_area.right - left;
-    const int height = work_height / 2;
-
+    // Используем область, выбранную до запуска просмотрщика, без повторного
+    // чтения переключателей после ожидания окна.
     ShowWindow(viewer_window, SW_RESTORE);
-    if (!SetWindowPos(viewer_window, nullptr, left, work_area.top, width, height,
+    if (!SetWindowPos(viewer_window, nullptr, bounds.left, bounds.top,
+            bounds.right - bounds.left, bounds.bottom - bounds.top,
             SWP_NOZORDER | SWP_SHOWWINDOW))
     {
         const DWORD error = GetLastError();

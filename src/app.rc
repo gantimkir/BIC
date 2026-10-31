@@ -2,8 +2,10 @@
 #include <windows.h>
 #include "resource.h"
 #include "pdf/resource.h"
+#include "land_plans_editor_resource.h"
 
 IDI_BIC ICON "volleyball.ico"
 
 // Оба PDF-диалога хранятся рядом с кодом обработки и входят в один ресурсный модуль.
 #include "pdf/file_report.rc"
+#include "land_plans_editor.rc"

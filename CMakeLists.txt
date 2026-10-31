@@ -10,6 +10,16 @@ add_executable(BIC WIN32
     src/main.cpp
     src/main_window.cpp
     src/main_window.h
+    src/land_plans_menu.cpp
+    src/land_plans_menu.h
+    src/land_plans_config.cpp
+    src/land_plans_config.h
+    src/land_plans_editor.cpp
+    src/land_plans_editor.h
+    src/land_plans_editor_resource.h
+    src/land_plans_editor.rc
+    src/explorer_folder.cpp
+    src/explorer_folder.h
     src/contract_registry.cpp
     src/contract_registry.h
     src/das_fl_letterhead.cpp
@@ -58,11 +68,14 @@ add_executable(BIC WIN32
 )
 # Диалог включён в общий app.rc; отдельная компиляция дала бы дубли ID ресурсов.
 set_source_files_properties(src/pdf/file_report.rc PROPERTIES HEADER_FILE_ONLY TRUE)
+set_source_files_properties(src/land_plans_editor.rc PROPERTIES HEADER_FILE_ONLY TRUE)
 # На текущем генераторе RC-включения не сканируются для Ninja. Явные зависимости
 # пересобирают app.rc.res при изменении разметки или ID внутри src/pdf.
 set_property(SOURCE src/app.rc APPEND PROPERTY OBJECT_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/file_report.rc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/resource.h")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/pdf/resource.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/land_plans_editor.rc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/land_plans_editor_resource.h")
 target_include_directories(BIC PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 # Заголовки закреплены вместе с комплектной DLL; импортной LIB нет, загрузка
 # выполняется только при структурном анализе из рабочего потока.
@@ -115,7 +128,18 @@ else()
         message(WARNING "Bundled Ghostscript is missing: ${BIC_GHOSTSCRIPT_ROOT}/bin/gsdll64.dll. PDF API will be unavailable.")
     endif()
 endif()
+# Отдельная цель выполняется и без перелинковки EXE: правки настройки в проекте
+# должны попадать в любую сборку BIC. Совпадающий файл повторно не записывается.
+add_custom_target(bic_land_plans_config ALL
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:BIC>"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/land_plans.txt"
+        "$<TARGET_FILE_DIR:BIC>/land_plans.txt"
+    COMMENT "Synchronizing land_plans.txt"
+    VERBATIM)
+add_dependencies(BIC bic_land_plans_config)
 install(TARGETS BIC RUNTIME DESTINATION .)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/land_plans.txt" DESTINATION .)
 # PDFium поставляется рядом с BIC так же, как Ghostscript; отдельной установки
 # нет. Неполная поставка не должна давать сборку с молча отсутствующим анализом.
 set(BIC_PDFIUM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/pdfium")
