@@ -34,12 +34,13 @@ constexpr int kDasUlLetterheadButtonId = 14;
 constexpr int kCompactButtonId = 15;
 constexpr int kLandPlansButtonId = 16;
 constexpr int kFolderPlacementGroupId = 17;
-// Непрерывный диапазон принадлежит только четырём переключателям положения.
+// Непрерывный диапазон принадлежит только пяти переключателям положения.
 constexpr int kFolderTopRightId = 18;
 constexpr int kFolderTopLeftId = 19;
 constexpr int kFolderBottomLeftId = 20;
 constexpr int kFolderLeftHalfId = 21;
-constexpr int kLandPlansEditorId = 22;
+constexpr int kFolderRightHalfId = 22;
+constexpr int kLandPlansEditorId = 23;
 // 153/255 = 60% непрозрачности; применяется ко всему компактному окну.
 constexpr BYTE kCompactAlpha = 153;
 constexpr int kButtonWidth = 100;
@@ -57,6 +58,9 @@ constexpr int kPzzGroupHeight = kPzzGroupTopInset + kButtonHeight + kPzzGroupBot
 constexpr int kPzzGroupButtonWidth =
     (kRegistryButtonWidth - 2 * kPzzGroupSideInset - kPzzGroupButtonGap) / 2;
 bool tray_icon_available = false;
+// Запоминаем только закрепление, введённое выбором правой половины. Если BIC
+// уже был topmost по другой причине, смена варианта не должна снимать этот режим.
+bool placement_added_topmost = false;
 
 // Снимок полного окна хранится на UI-потоке и обновляется перед каждым сжатием.
 // WINDOWPLACEMENT используется для отката при ошибке сжатия; обычное раскрытие — в четверть экрана.
@@ -176,8 +180,8 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     // Они остаются дочерними главного окна для WM_COMMAND и компактного режима.
     const int placement_left = kButtonMargin + kRegistryButtonWidth + kButtonSpacing;
     const int placement_top = kButtonMargin + 2 * (kButtonHeight + kButtonSpacing);
-    // Весь блок сохраняет ширину 90 px. Общий шаг рядов
-    // обеспечивает одинаковый вертикальный зазор, включая нижнюю кнопку 1/2.
+    // Весь блок сохраняет ширину 90 px. Общий шаг рядов обеспечивает одинаковый
+    // вертикальный зазор; обе половины занимают нижнюю строку рядом.
     constexpr int placement_width = kRegistryButtonWidth / 2;
     constexpr int placement_inset = 4;
     constexpr int placement_gap = 4;
@@ -197,7 +201,7 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     SendMessageW(placement_group, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
     // Четверти расположены пространственно: слева/справа сверху и слева снизу.
-    // Половина экрана занимает отдельную нижнюю строку на всю ширину рамки.
+    // Две половины экрана занимают нижнюю строку слева и справа.
     struct PlacementButton
     {
         int id;
@@ -212,12 +216,15 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
         {kFolderBottomLeftId, L"1/4", placement_inset, placement_button_top + placement_row_step,
             placement_quarter_width, placement_button_height},
         {kFolderLeftHalfId, L"1/2", placement_inset, placement_button_top + 2 * placement_row_step,
-            placement_inner_width, placement_button_height}
+            placement_quarter_width, placement_button_height},
+        {kFolderRightHalfId, L"1/2", placement_inset + placement_quarter_width + placement_gap,
+            placement_button_top + 2 * placement_row_step,
+            placement_quarter_width, placement_button_height}
     };
     for (const auto& item : placement_buttons)
     {
         // Ручной RADIOBUTTON не отжимается повторным нажатием; взаимное
-        // исключение всех четырёх явно выполняется через CheckRadioButton.
+        // исключение всех пяти явно выполняется через CheckRadioButton.
         HWND button = CreateWindowExW(
             0, L"BUTTON", item.caption,
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_RADIOBUTTON | BS_PUSHLIKE | BS_MULTILINE,
@@ -228,7 +235,7 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
             reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
     }
     // Ровно одна кнопка выбрана с момента создания, по умолчанию — слева сверху.
-    CheckRadioButton(window, kFolderTopRightId, kFolderLeftHalfId, kFolderTopLeftId);
+    CheckRadioButton(window, kFolderTopRightId, kFolderRightHalfId, kFolderTopLeftId);
 
     // Кнопка редактора справа от «Папки» сохраняет прежний обработчик.
     HWND editor_button = CreateWindowExW(
@@ -662,6 +669,38 @@ void ToggleCompact(HWND window)
     SetFocus(GetDlgItem(window, kCompactButtonId));
 }
 
+// Правая половина перекрывает обычное положение BIC внизу справа. Держим BIC
+// поверх внешнего окна, пока выбран этот вариант. При уходе с него снимаем
+// только закрепление, добавленное здесь; компактный режим хранит свой Z-порядок.
+bool UpdatePlacementTopmost(HWND window, int selected_id)
+{
+    if (selected_id == kFolderRightHalfId)
+    {
+        if ((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0)
+        {
+            return true;
+        }
+        if (!SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+        {
+            ShowCompactError(window, L"Не удалось закрепить BIC поверх открываемого окна.", GetLastError());
+            return false;
+        }
+        placement_added_topmost = true;
+    }
+    else if (placement_added_topmost)
+    {
+        if (!SetWindowPos(window, HWND_NOTOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+        {
+            ShowCompactError(window, L"Не удалось вернуть обычное положение BIC.", GetLastError());
+            return false;
+        }
+        placement_added_topmost = false;
+    }
+    return true;
+}
+
 // Единый снимок области для всех внешних документов и папок. Вычисляется
 // до открытия: изменение выбора во время ожидания не меняет текущую операцию.
 bool GetOpeningBounds(HWND window, RECT& bounds)
@@ -681,6 +720,11 @@ bool GetOpeningBounds(HWND window, RECT& bounds)
     {
         bounds.left = middle_x;
         bounds.bottom = middle_y;
+    }
+    else if (IsDlgButtonChecked(window, kFolderRightHalfId) == BST_CHECKED)
+    {
+        // Полная высота правой половины; BIC остаётся поверх этой области.
+        bounds.left = middle_x;
     }
     else
     {
@@ -724,11 +768,14 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         LandPlansEditor::Show(window);
         return true;
     }
-    if (command_id >= kFolderTopRightId && command_id <= kFolderLeftHalfId &&
+    if (command_id >= kFolderTopRightId && command_id <= kFolderRightHalfId &&
         HIWORD(w_param) == BN_CLICKED &&
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, command_id))
     {
-        CheckRadioButton(window, kFolderTopRightId, kFolderLeftHalfId, command_id);
+        if (UpdatePlacementTopmost(window, command_id))
+        {
+            CheckRadioButton(window, kFolderTopRightId, kFolderRightHalfId, command_id);
+        }
         return true;
     }
     if (LOWORD(w_param) == kContractRegistryButtonId && HIWORD(w_param) == BN_CLICKED &&
