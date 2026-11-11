@@ -1,4 +1,5 @@
 #include "main_window.h"
+#include "resource.h"
 #include <cwchar>
 
 #include "tray_icon.h"
@@ -33,30 +34,25 @@ constexpr int kDasFlLetterheadButtonId = 13;
 constexpr int kDasUlLetterheadButtonId = 14;
 constexpr int kCompactButtonId = 15;
 constexpr int kLandPlansButtonId = 16;
-constexpr int kFolderPlacementGroupId = 17;
-// Непрерывный диапазон принадлежит только пяти переключателям положения.
-constexpr int kFolderTopRightId = 18;
-constexpr int kFolderTopLeftId = 19;
-constexpr int kFolderBottomLeftId = 20;
-constexpr int kFolderLeftHalfId = 21;
-constexpr int kFolderRightHalfId = 22;
 constexpr int kLandPlansEditorId = 23;
 // 153/255 = 60% непрозрачности; применяется ко всему компактному окну.
 constexpr BYTE kCompactAlpha = 153;
 constexpr int kButtonWidth = 100;
-constexpr int kRegistryButtonWidth = 180;
 constexpr int kButtonHeight = 32;
 constexpr int kButtonMargin = 16;
 constexpr int kButtonSpacing = 8;
-// Общие размеры обеих рамок: отступы по бокам и зазор между кнопками равны.
+// Одиночные команды и пары имеют одинаковые наружные края в своей колонке.
+// Рамки ПЗЗ/PDF выступают за эти края, не сужая интерактивные элементы.
+constexpr int kPairedButtonsWidth = 180;
+constexpr int kPairGap = 4;
+constexpr int kCommandRowWidth = kPairedButtonsWidth + kPairGap;
+constexpr int kRightColumnLeft = kButtonMargin + kCommandRowWidth + kButtonSpacing;
+constexpr int kFrameOverhang = 4;
 // Надпись рамки занимает верхние 13 пикселей, нижняя граница — ещё 3 пикселя.
-constexpr int kPzzGroupSideInset = 4;
-constexpr int kPzzGroupButtonGap = kPzzGroupSideInset;
 constexpr int kPzzGroupTopInset = 13;
 constexpr int kPzzGroupBottomInset = 3;
 constexpr int kPzzGroupHeight = kPzzGroupTopInset + kButtonHeight + kPzzGroupBottomInset;
-constexpr int kPzzGroupButtonWidth =
-    (kRegistryButtonWidth - 2 * kPzzGroupSideInset - kPzzGroupButtonGap) / 2;
+constexpr int kPzzGroupButtonWidth = kPairedButtonsWidth / 2;
 bool tray_icon_available = false;
 // Запоминаем только закрепление, введённое выбором правой половины. Если BIC
 // уже был topmost по другой причине, смена варианта не должна снимать этот режим.
@@ -74,7 +70,7 @@ COLORREF expanded_color_key = 0;
 BYTE expanded_alpha = 255;
 DWORD expanded_layered_flags = LWA_ALPHA;
 
-// Создаёт рамку и две команды ПЗЗ с одинаковой геометрией (180 x 48, кнопки 84 x 32).
+// Создаёт рамку вокруг общего ряда и две команды ПЗЗ шириной 90 пикселей каждая.
 // Возвращает false при ошибке создания любого элемента; OnCreate тогда возвращает -1,
 // и Windows уничтожает главное окно вместе с уже созданными дочерними элементами.
 // Рамка только рисует границу: кнопки остаются дочерними элементами главного окна,
@@ -85,7 +81,8 @@ bool CreatePzzGroup(HWND window, HINSTANCE instance, const wchar_t* caption,
     HWND group = CreateWindowExW(
         0, L"BUTTON", caption,
         WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_GROUPBOX,
-        kButtonMargin, top, kRegistryButtonWidth, kPzzGroupHeight, window,
+        kButtonMargin - kFrameOverhang, top,
+        kCommandRowWidth + 2 * kFrameOverhang, kPzzGroupHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(group_id)), instance, nullptr);
     if (group == nullptr)
     {
@@ -98,7 +95,7 @@ bool CreatePzzGroup(HWND window, HINSTANCE instance, const wchar_t* caption,
     HWND text_button = CreateWindowExW(
         0, L"BUTTON", L"Текст",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + kPzzGroupSideInset, top + kPzzGroupTopInset,
+        kButtonMargin, top + kPzzGroupTopInset,
         kPzzGroupButtonWidth, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(text_button_id)), instance, nullptr);
     if (text_button == nullptr)
@@ -112,7 +109,7 @@ bool CreatePzzGroup(HWND window, HINSTANCE instance, const wchar_t* caption,
     HWND graphics_button = CreateWindowExW(
         0, L"BUTTON", L"Графика",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + kPzzGroupSideInset + kPzzGroupButtonWidth + kPzzGroupButtonGap,
+        kButtonMargin + kPzzGroupButtonWidth + kPairGap,
         top + kPzzGroupTopInset, kPzzGroupButtonWidth, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(graphics_button_id)), instance, nullptr);
     if (graphics_button == nullptr)
@@ -126,17 +123,18 @@ bool CreatePzzGroup(HWND window, HINSTANCE instance, const wchar_t* caption,
 
 LRESULT OnCreate(HWND window, HINSTANCE instance)
 {
-    // Две узкие кнопки занимают один ряд. Зазор 4 px сохраняет промежуток
-    // до соседней колонки ДАС при точной половинной ширине каждой кнопки.
-    constexpr int half_button_width = kRegistryButtonWidth / 2;
-    constexpr int pair_gap = 4;
+    // Бланки делят ширину поровну. В ряду папок ширина распределяется
+    // в пропорции 61,8% / остаток, без учёта общего зазора в 4 пикселя.
+    constexpr int half_button_width = kPairedButtonsWidth / 2;
+    constexpr int folders_button_width = (kPairedButtonsWidth * 618 + 500) / 1000;
+    constexpr int folders_editor_width = kPairedButtonsWidth - folders_button_width;
     constexpr int pzz_groups_top = kButtonMargin + 2 * (kButtonHeight + kButtonSpacing);
     constexpr int pdf_top = pzz_groups_top + 2 * (kPzzGroupHeight + kButtonSpacing);
     constexpr int folders_top = pdf_top + kPzzGroupHeight + kButtonSpacing;
     HWND registry_button = CreateWindowExW(
         0, L"BUTTON", L"Реестр договоров",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin, kButtonMargin, kRegistryButtonWidth, kButtonHeight, window,
+        kButtonMargin, kButtonMargin, kCommandRowWidth, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kContractRegistryButtonId)),
         instance, nullptr);
     if (registry_button == nullptr)
@@ -151,8 +149,7 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     HWND das_fl_letterhead_button = CreateWindowExW(
         0, L"BUTTON", L"Бланк ДАС. ФЛ",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + kRegistryButtonWidth + kButtonSpacing, kButtonMargin,
-        kRegistryButtonWidth, kButtonHeight, window,
+        kRightColumnLeft, kButtonMargin, kCommandRowWidth, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDasFlLetterheadButtonId)),
         instance, nullptr);
     if (das_fl_letterhead_button == nullptr)
@@ -164,9 +161,9 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
 
     // Под PDF находятся меню папок и редактор списка; меню привязано к новой позиции.
     HWND land_plans_button = CreateWindowExW(
-        0, L"BUTTON", L"Папки",
+        0, L"BUTTON", L"Папки. Кадастр",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin, folders_top, half_button_width, kButtonHeight, window,
+        kButtonMargin, folders_top, folders_button_width, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLandPlansButtonId)),
         instance, nullptr);
     if (land_plans_button == nullptr)
@@ -176,73 +173,12 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     SendMessageW(land_plans_button, WM_SETFONT,
         reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
 
-    // Рамка под ДАС ЮЛ объединяет четыре кнопки с фиксируемым нажатием.
-    // Они остаются дочерними главного окна для WM_COMMAND и компактного режима.
-    const int placement_left = kButtonMargin + kRegistryButtonWidth + kButtonSpacing;
-    const int placement_top = kButtonMargin + 2 * (kButtonHeight + kButtonSpacing);
-    // Весь блок сохраняет ширину 90 px. Общий шаг рядов обеспечивает одинаковый
-    // вертикальный зазор; обе половины занимают нижнюю строку рядом.
-    constexpr int placement_width = kRegistryButtonWidth / 2;
-    constexpr int placement_inset = 4;
-    constexpr int placement_gap = 4;
-    constexpr int placement_button_top = 17;
-    constexpr int placement_button_height = 26;
-    constexpr int placement_row_step = placement_button_height + placement_gap;
-    constexpr int placement_inner_width = placement_width - 2 * placement_inset;
-    constexpr int placement_quarter_width = (placement_inner_width - placement_gap) / 2;
-    constexpr int placement_height = placement_button_top + 3 * placement_button_height
-        + 2 * placement_gap + placement_inset;
-    HWND placement_group = CreateWindowExW(
-        0, L"BUTTON", L"Размещение",
-        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_GROUPBOX,
-        placement_left, placement_top, placement_width, placement_height, window,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kFolderPlacementGroupId)), instance, nullptr);
-    if (placement_group == nullptr) return -1;
-    SendMessageW(placement_group, WM_SETFONT,
-        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-    // Четверти расположены пространственно: слева/справа сверху и слева снизу.
-    // Две половины экрана занимают нижнюю строку слева и справа.
-    struct PlacementButton
-    {
-        int id;
-        const wchar_t* caption;
-        int x, y, width, height; // Координаты относительно рамки, в пикселях.
-    };
-    const PlacementButton placement_buttons[] = {
-        {kFolderTopLeftId, L"1/4", placement_inset, placement_button_top,
-            placement_quarter_width, placement_button_height},
-        {kFolderTopRightId, L"1/4", placement_inset + placement_quarter_width + placement_gap,
-            placement_button_top, placement_quarter_width, placement_button_height},
-        {kFolderBottomLeftId, L"1/4", placement_inset, placement_button_top + placement_row_step,
-            placement_quarter_width, placement_button_height},
-        {kFolderLeftHalfId, L"1/2", placement_inset, placement_button_top + 2 * placement_row_step,
-            placement_quarter_width, placement_button_height},
-        {kFolderRightHalfId, L"1/2", placement_inset + placement_quarter_width + placement_gap,
-            placement_button_top + 2 * placement_row_step,
-            placement_quarter_width, placement_button_height}
-    };
-    for (const auto& item : placement_buttons)
-    {
-        // Ручной RADIOBUTTON не отжимается повторным нажатием; взаимное
-        // исключение всех пяти явно выполняется через CheckRadioButton.
-        HWND button = CreateWindowExW(
-            0, L"BUTTON", item.caption,
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_RADIOBUTTON | BS_PUSHLIKE | BS_MULTILINE,
-            placement_left + item.x, placement_top + item.y, item.width, item.height,
-            window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(item.id)), instance, nullptr);
-        if (button == nullptr) return -1;
-        SendMessageW(button, WM_SETFONT,
-            reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
-    }
-    // Ровно одна кнопка выбрана с момента создания, по умолчанию — слева сверху.
-    CheckRadioButton(window, kFolderTopRightId, kFolderRightHalfId, kFolderTopLeftId);
-
-    // Кнопка редактора справа от «Папки» сохраняет прежний обработчик.
+    // Редактор занимает остаток ряда; меню открывается от новой широкой кнопки.
     HWND editor_button = CreateWindowExW(
         0, L"BUTTON", L"...",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + half_button_width + pair_gap, folders_top,
-        half_button_width, kButtonHeight, window,
+        kButtonMargin + folders_button_width + kPairGap, folders_top,
+        folders_editor_width, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kLandPlansEditorId)), instance, nullptr);
     if (editor_button == nullptr) return -1;
     SendMessageW(editor_button, WM_SETFONT,
@@ -253,9 +189,9 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     HWND das_ul_letterhead_button = CreateWindowExW(
         0, L"BUTTON", L"Бланк ДАС. ЮЛ",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + kRegistryButtonWidth + kButtonSpacing,
+        kRightColumnLeft,
         kButtonMargin + kButtonHeight + kButtonSpacing,
-        kRegistryButtonWidth, kButtonHeight, window,
+        kCommandRowWidth, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDasUlLetterheadButtonId)),
         instance, nullptr);
     if (das_ul_letterhead_button == nullptr)
@@ -284,7 +220,7 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     HWND ki_letterhead_button = CreateWindowExW(
         0, L"BUTTON", L"Бланк КИ",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-        kButtonMargin + half_button_width + pair_gap, kButtonMargin + kButtonHeight + kButtonSpacing,
+        kButtonMargin + half_button_width + kPairGap, kButtonMargin + kButtonHeight + kButtonSpacing,
         half_button_width, kButtonHeight, window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kKiLetterheadButtonId)),
         instance, nullptr);
@@ -310,9 +246,9 @@ LRESULT OnCreate(HWND window, HINSTANCE instance)
     }
 
     // PDF-модуль создаёт собственную рамку и область выбора; главная форма
-    // задаёт только место панели под рамками ПЗЗ.
+    // передаёт края интерактивного ряда и общий выступ рамки.
     if (!PdfPanel::Create(window, instance, kButtonMargin, pdf_top,
-            kRegistryButtonWidth, kPzzGroupHeight))
+            kCommandRowWidth, kPzzGroupHeight, kFrameOverhang))
     {
         return -1;
     }
@@ -674,7 +610,7 @@ void ToggleCompact(HWND window)
 // только закрепление, добавленное здесь; компактный режим хранит свой Z-порядок.
 bool UpdatePlacementTopmost(HWND window, int selected_id)
 {
-    if (selected_id == kFolderRightHalfId)
+    if (selected_id == IDC_PLACEMENT_RIGHT_HALF)
     {
         if ((GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0)
         {
@@ -701,27 +637,99 @@ bool UpdatePlacementTopmost(HWND window, int selected_id)
     return true;
 }
 
+// Возвращает ID выбранной области или IDCANCEL. До подтверждения запроса
+// диалог не меняет положение главного окна поверх других.
+INT_PTR CALLBACK PlacementDialogProcedure(HWND dialog, UINT message, WPARAM w_param, LPARAM)
+{
+    switch (message)
+    {
+    case WM_INITDIALOG:
+    {
+        RECT owner_bounds{};
+        RECT dialog_bounds{};
+        // Оба прямоугольника в экранных координатах. Учитываем заголовок и рамку
+        // обоих окон, чтобы центрировать внешний контур, а не рабочую область экрана.
+        if (GetWindowRect(GetWindow(dialog, GW_OWNER), &owner_bounds) &&
+            GetWindowRect(dialog, &dialog_bounds))
+        {
+            const LONG x = owner_bounds.left +
+                ((owner_bounds.right - owner_bounds.left) - (dialog_bounds.right - dialog_bounds.left)) / 2;
+            const LONG y = owner_bounds.top +
+                ((owner_bounds.bottom - owner_bounds.top) - (dialog_bounds.bottom - dialog_bounds.top)) / 2;
+            SetWindowPos(dialog, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        // Win32 создаёт все варианты неотмеченными. Каждый запрос требует
+        // нового выбора; фокус клавиатуры не считается нажатием.
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(w_param) == IDCANCEL)
+        {
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+        if (const int id = LOWORD(w_param); id >= IDC_PLACEMENT_TOP_LEFT &&
+            id <= IDC_PLACEMENT_RIGHT_HALF && HIWORD(w_param) == BN_CLICKED)
+        {
+            EndDialog(dialog, id);
+            return TRUE;
+        }
+        break;
+    case WM_CLOSE:
+        EndDialog(dialog, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 // Единый снимок области для всех внешних документов и папок. Вычисляется
 // до открытия: изменение выбора во время ожидания не меняет текущую операцию.
-bool GetOpeningBounds(HWND window, RECT& bounds)
+bool GetOpeningBounds(HWND window, int placement, RECT& bounds)
 {
-    RECT work{};
-    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0) ||
-        work.right - work.left < 2 || work.bottom - work.top < 2)
+    RECT area{};
+    const bool centered = placement == IDC_PLACEMENT_CENTER;
+    bool area_available = false;
+    if (centered)
     {
-        MessageBoxW(window, L"Не удалось определить рабочую область для размещения окна.",
+        // Точка (0, 0) лежит на основном мониторе. «Центр» использует весь
+        // экран, включая область панели задач, в отличие от половин и четвертей.
+        MONITORINFO monitor{};
+        monitor.cbSize = sizeof(monitor);
+        area_available = GetMonitorInfoW(
+            MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &monitor) != FALSE;
+        area = monitor.rcMonitor;
+    }
+    else
+    {
+        area_available = SystemParametersInfoW(SPI_GETWORKAREA, 0, &area, 0) != FALSE;
+    }
+    const LONG width = area.right - area.left;
+    const LONG height = area.bottom - area.top;
+    if (!area_available || width < 2 || height < 2)
+    {
+        MessageBoxW(window, L"Не удалось определить область экрана для размещения окна.",
             L"Размещение", MB_OK | MB_ICONERROR);
         return false;
     }
-    const LONG middle_x = work.left + (work.right - work.left) / 2;
-    const LONG middle_y = work.top + (work.bottom - work.top) / 2;
-    bounds = work;
-    if (IsDlgButtonChecked(window, kFolderTopRightId) == BST_CHECKED)
+    if (centered)
+    {
+        // Округляем обе стороны до ближайшего пикселя, оставшийся зазор делим пополам.
+        const LONG target_width = MulDiv(width, 618, 1000);
+        const LONG target_height = MulDiv(height, 618, 1000);
+        const LONG left = area.left + (width - target_width) / 2;
+        const LONG top = area.top + (height - target_height) / 2;
+        bounds = {left, top, left + target_width, top + target_height};
+        return true;
+    }
+    const LONG middle_x = area.left + width / 2;
+    const LONG middle_y = area.top + height / 2;
+    bounds = area;
+    if (placement == IDC_PLACEMENT_TOP_RIGHT)
     {
         bounds.left = middle_x;
         bounds.bottom = middle_y;
     }
-    else if (IsDlgButtonChecked(window, kFolderRightHalfId) == BST_CHECKED)
+    else if (placement == IDC_PLACEMENT_RIGHT_HALF)
     {
         // Полная высота правой половины; BIC остаётся поверх этой области.
         bounds.left = middle_x;
@@ -729,23 +737,40 @@ bool GetOpeningBounds(HWND window, RECT& bounds)
     else
     {
         bounds.right = middle_x;
-        if (IsDlgButtonChecked(window, kFolderBottomLeftId) == BST_CHECKED)
+        if (placement == IDC_PLACEMENT_BOTTOM_LEFT)
             bounds.top = middle_y;
-        else if (IsDlgButtonChecked(window, kFolderLeftHalfId) != BST_CHECKED)
+        else if (placement != IDC_PLACEMENT_LEFT_HALF)
             bounds.bottom = middle_y; // По умолчанию — верхняя левая четверть.
     }
     return true;
 }
 
+// Возвращает область только после выбора в модальном окне. Отмена не запускает
+// открытие файла или папки и не меняет закрепление главного окна.
+bool RequestOpeningBounds(HWND window, RECT& bounds)
+{
+    const INT_PTR result = DialogBoxW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDD_PLACEMENT),
+        window, PlacementDialogProcedure);
+    if (result == -1)
+    {
+        ShowCompactError(window, L"Не удалось открыть окно «Размещение».", GetLastError());
+        return false;
+    }
+    if (result < IDC_PLACEMENT_TOP_LEFT || result > IDC_PLACEMENT_RIGHT_HALF || !IsWindow(window))
+        return false;
+
+    const int placement = static_cast<int>(result);
+    if (!GetOpeningBounds(window, placement, bounds) || !UpdatePlacementTopmost(window, placement))
+        return false;
+    return true;
+}
+
 bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
 {
-    // BS_RADIOBUTTON сам состояние не меняет. При каждом нажатии отмечаем
-    // выбранную кнопку и снимаем отметки с остальных, включая вариант половины.
-    // Повторное нажатие оставляет выбранный вариант включённым.
     const int command_id = LOWORD(w_param);
     RECT opening_bounds{};
-    // Служебные диалоги не являются внешними документами. Для команд открытия
-    // вычисляем одну область. ЮЛ самостоятельно размещает документы в трёх четвертях.
+    // Для встроенных файлов сначала запрашиваем область; при отмене не доходим
+    // до обработчика открытия. ЮЛ и служебные диалоги пропускают этот запрос.
     switch (command_id)
     {
     case kContractRegistryButtonId:
@@ -756,26 +781,15 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
     case kPzz6141TextButtonId:
     case kPzz6148GraphicsButtonId:
     case kPzz6141GraphicsButtonId:
-    case kLandPlansButtonId:
         if (HIWORD(w_param) == BN_CLICKED &&
             reinterpret_cast<HWND>(l_param) == GetDlgItem(window, command_id) &&
-            !GetOpeningBounds(window, opening_bounds)) return true;
+            !RequestOpeningBounds(window, opening_bounds)) return true;
         break;
     }
     if (command_id == kLandPlansEditorId && HIWORD(w_param) == BN_CLICKED &&
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kLandPlansEditorId))
     {
         LandPlansEditor::Show(window);
-        return true;
-    }
-    if (command_id >= kFolderTopRightId && command_id <= kFolderRightHalfId &&
-        HIWORD(w_param) == BN_CLICKED &&
-        reinterpret_cast<HWND>(l_param) == GetDlgItem(window, command_id))
-    {
-        if (UpdatePlacementTopmost(window, command_id))
-        {
-            CheckRadioButton(window, kFolderTopRightId, kFolderRightHalfId, command_id);
-        }
         return true;
     }
     if (LOWORD(w_param) == kContractRegistryButtonId && HIWORD(w_param) == BN_CLICKED &&
@@ -790,11 +804,14 @@ bool OnCommand(HWND window, WPARAM w_param, LPARAM l_param)
         DasFlLetterhead::Open(window, opening_bounds);
         return true;
     }
-    // Меню использует локальные ID и не отправляет команды соседних кнопок.
+    // Сначала закрываем меню с выбранным путём, затем спрашиваем размещение.
+    // Отмена любого из двух шагов не запускает Проводник.
     if (LOWORD(w_param) == kLandPlansButtonId && HIWORD(w_param) == BN_CLICKED &&
         reinterpret_cast<HWND>(l_param) == GetDlgItem(window, kLandPlansButtonId))
     {
-        LandPlansMenu::Show(window, GetDlgItem(window, kLandPlansButtonId), opening_bounds);
+        const auto path = LandPlansMenu::Select(window, GetDlgItem(window, kLandPlansButtonId));
+        if (path && RequestOpeningBounds(window, opening_bounds))
+            ExplorerFolder::Open(window, *path, opening_bounds);
         return true;
     }
     if (LOWORD(w_param) == kDasUlLetterheadButtonId && HIWORD(w_param) == BN_CLICKED &&

@@ -1,13 +1,15 @@
 #pragma once
 
 #include <windows.h>
-#include "explorer_folder.h"
+#include <optional>
+#include <string>
 
 namespace LandPlansMenu
 {
 // Перечитывает активный список рядом с EXE (user имеет приоритет) и показывает меню.
-// Выбор открывает папку в выбранной области; ошибки показывает владельцу.
-void Show(HWND owner, HWND button, const RECT& opening_bounds);
+// Возвращает путь выбранной папки после закрытия меню; при отмене или ошибке
+// возвращает nullopt. Ошибки показывает владельцу. Проводник не запускает.
+std::optional<std::wstring> Select(HWND owner, HWND button);
 // Обслуживают owner-draw заголовки только активного меню, чужие элементы пропускают.
 bool MeasureSeparator(MEASUREITEMSTRUCT& item);
 bool DrawMenuSeparator(const DRAWITEMSTRUCT& item);

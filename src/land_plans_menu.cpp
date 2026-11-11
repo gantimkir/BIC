@@ -87,22 +87,22 @@ bool LandPlansMenu::DrawMenuSeparator(const DRAWITEMSTRUCT& item)
     return true;
 }
 
-void LandPlansMenu::Show(HWND owner, HWND button, const RECT& opening_bounds)
+std::optional<std::wstring> LandPlansMenu::Select(HWND owner, HWND button)
 {
     LandPlansConfig::Snapshot snapshot;
     std::wstring error;
     if (!LandPlansConfig::Load(snapshot, error))
     {
-        MessageBoxW(owner, error.c_str(), L"Папки", MB_OK | MB_ICONERROR);
-        return;
+        MessageBoxW(owner, error.c_str(), L"Папки. Кадастр", MB_OK | MB_ICONERROR);
+        return std::nullopt;
     }
     auto& entries = snapshot.entries;
     LandPlansConfig::Sort(entries);
     if (entries.empty())
     {
-        MessageBoxW(owner, L"Список пуст. Добавьте папки через кнопку «...» справа от «Папки».",
-            L"Папки", MB_OK | MB_ICONINFORMATION);
-        return;
+        MessageBoxW(owner, L"Список пуст. Добавьте папки через кнопку «...» справа от «Папки. Кадастр».",
+            L"Папки. Кадастр", MB_OK | MB_ICONINFORMATION);
+        return std::nullopt;
     }
     // Ссылки itemData действуют до завершения синхронного TrackPopupMenuEx.
     struct ActiveGuard
@@ -136,8 +136,8 @@ void LandPlansMenu::Show(HWND owner, HWND button, const RECT& opening_bounds)
     RECT bounds{};
     if (!created || !GetWindowRect(button, &bounds))
     {
-        MessageBoxW(owner, L"Не удалось создать или разместить меню.", L"Папки", MB_OK | MB_ICONERROR);
-        return;
+        MessageBoxW(owner, L"Не удалось создать или разместить меню.", L"Папки. Кадастр", MB_OK | MB_ICONERROR);
+        return std::nullopt;
     }
     TPMPARAMS parameters{};
     parameters.cbSize = sizeof(parameters);
@@ -146,5 +146,6 @@ void LandPlansMenu::Show(HWND owner, HWND button, const RECT& opening_bounds)
     const UINT selected = TrackPopupMenuEx(menu.handle, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON |
         TPM_RETURNCMD | TPM_NONOTIFY, bounds.left, bounds.bottom, owner, &parameters);
     if (selected && selected <= entries.size() && !entries[selected - 1].separator)
-        ExplorerFolder::Open(owner, entries[selected - 1].value, opening_bounds);
+        return entries[selected - 1].value;
+    return std::nullopt;
 }

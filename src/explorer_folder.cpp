@@ -13,7 +13,7 @@ struct Pending
 {
     HWND owner;
     std::wstring path;
-    RECT bounds; // Снимок общей области из рамки «Размещение» при открытии.
+    RECT bounds; // Снимок общей области из диалога «Размещение» при открытии.
     ULONGLONG deadline;
 };
 // Доступ только из UI-потока: таймер не блокирует окно ожиданием запуска Explorer.

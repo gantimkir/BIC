@@ -5,7 +5,9 @@
 namespace PdfPanel
 {
 // Создаёт рамку PDF и область выбора как дочерние окна owner.
-// Координаты и размеры заданы в клиентской области owner. При отказе возвращает
-// false; уже созданные дочерние окна удалит Windows при уничтожении owner.
-bool Create(HWND owner, HINSTANCE instance, int left, int top, int width, int height);
+// content_left/content_width задают края области выбора, top/height — вертикальные
+// границы рамки, side_overhang — выступ рамки с каждой стороны. Всё в пикселях
+// клиентской области owner. При отказе false; дочерние окна удалит Windows вместе с owner.
+bool Create(HWND owner, HINSTANCE instance, int content_left, int top,
+    int content_width, int height, int side_overhang);
 }
